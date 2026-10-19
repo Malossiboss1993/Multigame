@@ -8,31 +8,16 @@
 #include <main_app/audio_player/AudioPlayer.h>
 #include <debug/Logger.h>
 
-constexpr float g_fXKidsFantasyButton = 0.0f;
-constexpr float g_fYKidsFantasyButton = 386.0f;
-
-constexpr float g_fXRouletteButton = 710.0f;
-constexpr float g_fYRouletteButton = 386.0f;
-
-constexpr float g_fXParticleBuilder = 1420.0f;
-constexpr float g_fYParticleBuilder = 386.0f;
-
 bool AppSelect::Init()
 {
     /*Load textures*/
     m_textureBackground = Texture::CreateTexture("../src/resources/app_select_background.jpg");
 
     m_buttonKidsFantasy.textureButton = Texture::CreateTexture("../src/resources/kids_fantasy/kids_fantasy_button_bgr_round.png");
-    m_buttonKidsFantasy.fX = g_fXKidsFantasyButton;
-    m_buttonKidsFantasy.fY = g_fYKidsFantasyButton;
 
     m_buttonParticleBuilder.textureButton = Texture::CreateTexture("../src/resources/particle_builder/particle_button.png");
-    m_buttonParticleBuilder.fX = g_fXParticleBuilder;
-    m_buttonParticleBuilder.fY = g_fYParticleBuilder;
 
     m_buttonRoulette.textureButton = Texture::CreateTexture("../src/resources/roulette/roulette_button.png");
-    m_buttonRoulette.fX = g_fXRouletteButton;
-    m_buttonRoulette.fY = g_fYRouletteButton;
 
     if (!m_textureBackground->Load())
     {
@@ -57,6 +42,35 @@ bool AppSelect::Init()
         LOG_ERROR("AppSelect - Unable to load texture roulette button !");
         return false;
     }
+
+    /*Position the 3 app buttons evenly distributed in one row across the screen,
+      based on the current screen size.*/
+    const auto &appRend = MainApp::GetInstance().ptrRend;
+    const float screenWidth = static_cast<float>(appRend->SCREEN_WIDTH);
+    const float screenHeight = static_cast<float>(appRend->SCREEN_HEIGHT);
+
+    const float buttonWidthKidsFantasy = m_buttonKidsFantasy.textureButton->GetWidth();
+    const float buttonWidthParticleBuilder = m_buttonParticleBuilder.textureButton->GetWidth();
+    const float buttonWidthRoulette = m_buttonRoulette.textureButton->GetWidth();
+
+    const float totalButtonsWidth =
+        buttonWidthKidsFantasy + buttonWidthParticleBuilder + buttonWidthRoulette;
+    const float margin = (screenWidth - totalButtonsWidth) / 4.0f;
+
+    m_buttonKidsFantasy.fX = margin;
+    m_buttonKidsFantasy.fY =
+        (screenHeight - static_cast<float>(m_buttonKidsFantasy.textureButton->GetHeight())) /
+        2.0f;
+
+    m_buttonParticleBuilder.fX = margin + buttonWidthKidsFantasy + margin;
+    m_buttonParticleBuilder.fY =
+        (screenHeight - static_cast<float>(m_buttonParticleBuilder.textureButton->GetHeight())) /
+        2.0f;
+
+    m_buttonRoulette.fX = margin + buttonWidthKidsFantasy + margin + buttonWidthParticleBuilder +
+                          margin;
+    m_buttonRoulette.fY =
+        (screenHeight - static_cast<float>(m_buttonRoulette.textureButton->GetHeight())) / 2.0f;
 
     /*Register Client Kids Fantasy*/
     RegisterClient(EApps::eKidsFantasy, &m_KidsFantasy);
