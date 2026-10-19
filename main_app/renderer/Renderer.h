@@ -54,9 +54,12 @@ private:
     Shader m_shaderFont;
 
     void SetGLFWCallbacks();
+
 public:
 
     Renderer();
+
+    ~Renderer();
 
     unsigned int SCREEN_WIDTH = 1920;
     unsigned int SCREEN_HEIGHT = 1080;

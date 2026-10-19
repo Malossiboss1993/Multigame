@@ -1,13 +1,13 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.16)
 
 # Specify compilers
+# If no compiler was specified through CC/CXX environment variables or the
+# CMake cache, use the default compiler of the system.
 if ("${CMAKE_C_COMPILER}" STREQUAL "")
-    set(CMAKE_C_COMPILER clang-10 CACHE INTERNAL "")
-    message(STATUS "No C compiler was specified. Setting to ${CMAKE_C_COMPILER}")
+    message(STATUS "No C compiler was specified. Using the default C compiler.")
 endif()
 if ("${CMAKE_CXX_COMPILER}" STREQUAL "")
-    set(CMAKE_CXX_COMPILER clang++-10 CACHE INTERNAL "")
-    message(STATUS "No C++ compiler was specified. Setting to ${CMAKE_CXX_COMPILER}")
+    message(STATUS "No C++ compiler was specified. Using the default C++ compiler.")
 endif()
 
 # Name of the project
@@ -126,7 +126,6 @@ set(LIBS_INCLUDE_DIRS
     ${LIBS}/glad
     ${LIBS}/glm
     ${LIBS}/imgui
-    ${LIBS}/irrKlang/include
     ${LIBS}/KHR
     ${LIBS}/rapidjson
     ${LIBS}/shader
@@ -141,6 +140,12 @@ find_package(glfw3 REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(Freetype REQUIRED)
 
+# Link against the prebuilt irrKlang library shipped in the repository.
+set(IrrKlang_LIBRARY
+    ${MULTIGAME_ROOT_DIR}/libs/irrKlang/bin/linux-gcc-64/libIrrKlang.so)
+target_include_directories(${PROJECT_NAME} PRIVATE ${MULTIGAME_ROOT_DIR}/libs/irrKlang/include)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${IrrKlang_LIBRARY})
+
 #add library glad
 add_library(Glad ${LIBS}/glad/glad.h ${LIBS}/glad.c)
 
@@ -148,11 +153,7 @@ add_library(Glad ${LIBS}/glad/glad.h ${LIBS}/glad.c)
 file(GLOB IMGUI_SOURCES ${LIBS}/imgui/*.h ${LIBS}/imgui/*.cpp)
 add_library(ImGui ${IMGUI_SOURCES})
 
-#add library irrKlang
-add_library(IrrKlang SHARED IMPORTED)
-set_property(TARGET IrrKlang PROPERTY IMPORTED_LOCATION ${LIBS}/irrKlang/bin/linux-gcc-64/libIrrKlang.so)
-
-
 #link all libraries to executable
-target_link_libraries(${PROJECT_NAME} glfw GL Glad freetype ImGui IrrKlang X11 pthread Xrandr
+target_link_libraries(${PROJECT_NAME} PRIVATE glfw GL ${IrrKlang_LIBRARY}
+                        Glad freetype ImGui X11 pthread Xrandr
                         Xi ${CMAKE_DL_LIBS} stdc++fs)

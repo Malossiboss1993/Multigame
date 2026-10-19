@@ -1,16 +1,23 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
-#include <irrKlang/include/irrKlang.h>
-using namespace irrklang;
+
+#include <irrKlang.h>
 
 class AudioPlayer
 {
 
 private:
 
-    /*Actual audio engine*/
-    ISoundEngine* m_ptrSoundEngine = nullptr;
+    /*Directory that contains the running executable. Used to resolve the
+      relative paths of the sound files, so that the application finds them
+      no matter from which directory it was started. */
+    static std::filesystem::path ExecutableDirectory();
+
+    /*Pointer to the irrKlang sound engine. The engine is created in Init() and
+      dropped in Deinit(). */
+    irrklang::ISoundEngine* m_engine = nullptr;
 
 public:
 

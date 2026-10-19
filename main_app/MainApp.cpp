@@ -126,8 +126,8 @@ bool MainApp::Deinit()
     ImGui::DestroyContext();
     ptrAppSelect->Deinit();
     ptrPanel->Deinit();
-    ptrRend->Deinit();
     ptrAudioPlayer->Deinit();
+    ptrRend->Deinit();
 
     LOG_WARN("MainApp - Deinitialzied ...");
     return true;

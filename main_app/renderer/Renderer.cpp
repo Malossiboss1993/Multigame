@@ -80,10 +80,27 @@ bool Renderer::InitSystem(const std::string& strTitle,
 
 void Renderer::Deinit()
 {
-    glfwDestroyWindow(window);
-    glfwTerminate();
-
+    /* The window is NOT destroyed here. It must stay alive until every other
+     * object that still uses OpenGL resources (textures, fonts, particles)
+     * has been destroyed, because their destructors call OpenGL functions.
+     * Those destructors run while this window's context is still valid, because
+     * ~Renderer runs only after all of them. */
     LOG_WARN("Renderer - Deinitialized ...");
+}
+
+Renderer::~Renderer()
+{
+    /* The OpenGL context is terminated only here, after every other object
+     * that still references OpenGL resources (textures, fonts, particles)
+     * has been destroyed. Those destructors run while this context is still
+     * valid, because this destructor runs last. Terminating it earlier would
+     * make their OpenGL calls fail or crash. */
+    if (window != nullptr)
+    {
+        glfwDestroyWindow(window);
+        window = nullptr;
+    }
+    glfwTerminate();
 }
 
 void Renderer::CreateAndFill2DBuffers()

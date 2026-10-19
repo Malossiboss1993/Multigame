@@ -46,10 +46,14 @@ public:
     void operator = (MainApp &&) = delete;
 
     /*Unique pointers global objects to main classes*/
+    /* The Renderer must be the first of these declarations: the OpenGL context
+     * is terminated in its destructor, so every other component that uses
+     * OpenGL (Panel textures, AppSelect's particle systems, ...) has to be
+     * destroyed before it. */
+    std::unique_ptr<Renderer> ptrRend;
     std::unique_ptr<Debug::Logger> ptrLogger;
     std::unique_ptr<AppSelect> ptrAppSelect;
     std::unique_ptr<AudioPlayer> ptrAudioPlayer;
-    std::unique_ptr<Renderer>ptrRend;
     std::unique_ptr<TimerMgr>ptrTimer;
     std::unique_ptr<Panel>ptrPanel;
 
