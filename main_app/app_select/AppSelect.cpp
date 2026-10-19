@@ -62,15 +62,15 @@ bool AppSelect::Init()
         (screenHeight - static_cast<float>(m_buttonKidsFantasy.textureButton->GetHeight())) /
         2.0f;
 
-    m_buttonParticleBuilder.fX = margin + buttonWidthKidsFantasy + margin;
+    m_buttonRoulette.fX = margin + buttonWidthKidsFantasy + margin;
+    m_buttonRoulette.fY =
+        (screenHeight - static_cast<float>(m_buttonRoulette.textureButton->GetHeight())) / 2.0f;
+
+    m_buttonParticleBuilder.fX = margin + buttonWidthKidsFantasy + margin + buttonWidthRoulette +
+                          margin;
     m_buttonParticleBuilder.fY =
         (screenHeight - static_cast<float>(m_buttonParticleBuilder.textureButton->GetHeight())) /
         2.0f;
-
-    m_buttonRoulette.fX = margin + buttonWidthKidsFantasy + margin + buttonWidthParticleBuilder +
-                          margin;
-    m_buttonRoulette.fY =
-        (screenHeight - static_cast<float>(m_buttonRoulette.textureButton->GetHeight())) / 2.0f;
 
     /*Register Client Kids Fantasy*/
     RegisterClient(EApps::eKidsFantasy, &m_KidsFantasy);
