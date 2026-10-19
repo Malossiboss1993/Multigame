@@ -10,6 +10,10 @@
 
 bool AppSelect::Init()
 {
+    const auto &rend = MainApp::GetInstance().ptrRend;
+    const float screenWidth = static_cast<float>(rend->SCREEN_WIDTH);
+    const float screenHeight = static_cast<float>(rend->SCREEN_HEIGHT);
+
     /*Load textures*/
     m_textureBackground = Texture::CreateTexture("../src/resources/app_select_background.jpg");
 
@@ -19,67 +23,43 @@ bool AppSelect::Init()
 
     m_buttonRoulette.textureButton = Texture::CreateTexture("../src/resources/roulette/roulette_button.png");
 
-    if (!m_textureBackground->Load())
+    if (!m_textureBackground->Load() ||
+        !m_buttonParticleBuilder.textureButton->Load() ||
+        !m_buttonKidsFantasy.textureButton->Load() ||
+        !m_buttonRoulette.textureButton->Load())
     {
-        LOG_ERROR("AppSelect - Unable to load texture background !");
-        return false;
-    }
-
-    if (!m_buttonParticleBuilder.textureButton->Load())
-    {
-        LOG_ERROR("AppSelect - Unable to load texture particle builder button !");
-        return false;
-    }
-
-    if (!m_buttonKidsFantasy.textureButton->Load())
-    {
-        LOG_ERROR("AppSelect - Unable to load texture kids fantasy button !");
-        return false;
-    }
-
-    if (!m_buttonRoulette.textureButton->Load())
-    {
-        LOG_ERROR("AppSelect - Unable to load texture roulette button !");
+        LOG_ERROR("AppSelect - Unable to load textures !");
         return false;
     }
 
     /*Position the 3 app buttons evenly distributed in one row across the screen,
       based on the current screen size.*/
-    const auto &appRend = MainApp::GetInstance().ptrRend;
-    const float screenWidth = static_cast<float>(appRend->SCREEN_WIDTH);
-    const float screenHeight = static_cast<float>(appRend->SCREEN_HEIGHT);
+    Button *buttons[] = { &m_buttonKidsFantasy, &m_buttonRoulette, &m_buttonParticleBuilder };
 
-    const float buttonWidthKidsFantasy = m_buttonKidsFantasy.textureButton->GetWidth();
-    const float buttonWidthParticleBuilder = m_buttonParticleBuilder.textureButton->GetWidth();
-    const float buttonWidthRoulette = m_buttonRoulette.textureButton->GetWidth();
+    float totalWidth = 0.0f;
+    for (auto *btn : buttons)
+    {
+        totalWidth += static_cast<float>(btn->textureButton->GetWidth());
+    }
 
-    const float totalButtonsWidth =
-        buttonWidthKidsFantasy + buttonWidthParticleBuilder + buttonWidthRoulette;
-    const float margin = (screenWidth - totalButtonsWidth) / 4.0f;
+    const float margin = (screenWidth - totalWidth) / 4.0f;
+    float currentX = margin;
 
-    m_buttonKidsFantasy.fX = margin;
-    m_buttonKidsFantasy.fY =
-        (screenHeight - static_cast<float>(m_buttonKidsFantasy.textureButton->GetHeight())) /
-        2.0f;
-
-    m_buttonRoulette.fX = margin + buttonWidthKidsFantasy + margin;
-    m_buttonRoulette.fY =
-        (screenHeight - static_cast<float>(m_buttonRoulette.textureButton->GetHeight())) / 2.0f;
-
-    m_buttonParticleBuilder.fX = margin + buttonWidthKidsFantasy + margin + buttonWidthRoulette +
-                          margin;
-    m_buttonParticleBuilder.fY =
-        (screenHeight - static_cast<float>(m_buttonParticleBuilder.textureButton->GetHeight())) /
-        2.0f;
+    for (auto *btn : buttons)
+    {
+        btn->fX = currentX;
+        btn->fY = (screenHeight - static_cast<float>(btn->textureButton->GetHeight())) / 2.0f;
+        currentX += static_cast<float>(btn->textureButton->GetWidth()) + margin;
+    }
 
     /*Register Client Kids Fantasy*/
     RegisterClient(EApps::eKidsFantasy, &m_KidsFantasy);
 
-    /*Register Client Particle Builder*/
-    RegisterClient(EApps::eParticleBuilder, &m_ParticleBuilder);
-
     /*Register Client Roulette*/
     RegisterClient(EApps::eRoulette, &m_Roulette);
+
+    /*Register Client Particle Builder*/
+    RegisterClient(EApps::eParticleBuilder, &m_ParticleBuilder);
 
     /*Initalize all the applications*/
     for (const auto &app : m_mapAppClients)
@@ -94,13 +74,12 @@ bool AppSelect::Init()
     m_eState = EAppSelectStates::eReadyForSelection;
 
     auto textureStar = Texture::CreateTexture("../src/resources/particle_sun.png");
-    if(!textureStar->Load())
+    if (!textureStar->Load())
     {
         LOG_ERROR("AppSelect - Unable to load texture particle !");
         return false;
     }
 
-    const auto &rend = MainApp::GetInstance().ptrRend;
     m_particleStarEffect.Init(textureStar, {rend->SCREEN_WIDTH / 2, rend->SCREEN_HEIGHT / 2});
     m_particleStarEffect.SetVelocityVariation({2.5f, 2.0f});
     m_particleStarEffect.SetSizeBegin(0.001f);
