@@ -52,6 +52,9 @@ private:
     /*Current reeling step, in base of state will be changed*/
     float m_fReelingStep = 0.0f;
 
+    /*Last time ProcessReeling was called, used for frame-rate independent movement*/
+    std::chrono::time_point<std::chrono::system_clock> m_lastProcessTime;
+
     /*Cycles counter, how many times actual reels*/
     int m_nCounterCycles = 0;
 

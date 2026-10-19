@@ -12,9 +12,9 @@
 constexpr unsigned int g_unTimerReeling = 1;
 constexpr unsigned int g_unPeriodReeling = 1;
 constexpr unsigned int g_unReelingCyclesBeforeBounce = 1;
-constexpr float g_fAccelerationStep = 0.25f;
-constexpr float g_fBouncingStep = -1.2f;
-constexpr float g_fReelingMaxSpeed = 17.0f;
+constexpr float g_fAccelerationStep = 6806.25f;   // pixels/sec^2 (was 0.25f per tick on 165Hz)
+constexpr float g_fBouncingStep = -300.0f;        // pixels/sec   (was -1.2f per tick on 165Hz)
+constexpr float g_fReelingMaxSpeed = 2805.0f;     // pixels/sec   (was 17.0f per tick on 165Hz)
 
 bool Reel::Init(GameDefs::EReels eIDReel,
                 float fXOrgPos,
@@ -68,9 +68,21 @@ bool Reel::InitFiguresAnimations(const std::array<AnimPlayer, GameDefs::eTotalGa
 
 void Reel::ProcessReeling()
 {
+    /*Compute delta time in seconds for frame-rate independent movement*/
+    auto currentTime = std::chrono::system_clock::now();
+    std::chrono::duration<float> deltaTime = currentTime - m_lastProcessTime;
+    float dt = deltaTime.count();
+    m_lastProcessTime = currentTime;
+
+    /*Safety clamp: if the game lags, don't let the reel jump too far*/
+    if (dt > 0.1f)
+    {
+        dt = 0.1f;
+    }
+
     if (m_eState == EReelState::eAccelerating)
     {
-        m_fReelingStep += g_fAccelerationStep;
+        m_fReelingStep += g_fAccelerationStep * dt;
 
         /*Max Speed reached, change the state to Reeling*/
         if (m_fReelingStep >= g_fReelingMaxSpeed)
@@ -144,7 +156,7 @@ void Reel::ProcessReeling()
             }
         }
 
-        figure.fYPos += m_fReelingStep;
+        figure.fYPos += m_fReelingStep * dt;
 
         /*Set every cycle the leading Y position of the first visible figure*/
         if (figure.eFigurePosition == GameDefs::EFigurePositionPerReel::eSecondPositionVisible)
@@ -191,6 +203,7 @@ void Reel::StartReeling()
     m_fYFirstVisibleFigure = 0.0f;
     m_bNeedToFastStop = false;
     m_eState = EReelState::eAccelerating;
+    m_lastProcessTime = std::chrono::system_clock::now();
     MainApp::GetInstance().ptrTimer->StartTimer(this, g_unTimerReeling, g_unPeriodReeling);
 }
 
