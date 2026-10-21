@@ -20,6 +20,7 @@ private:
 
     /*Soldier movement and animations*/
     float m_fSoldierFeetX = 650.0f;
+    float m_fSoldierFeetY = 930.0f;
     bool m_bSoldierFacingRight = true;
     bool m_bSoldierMoving = false;
     AnimPlayer m_animSoldierIdle;

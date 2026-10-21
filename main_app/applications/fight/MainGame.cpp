@@ -12,10 +12,12 @@
 constexpr float g_fFpsSoldierIdle = 10.0f;
 constexpr float g_fFpsSoldierWalk = 10.0f;
 constexpr float g_fSoldierMoveSpeed = 300.0f;
+constexpr float g_fSoldierVerticalMoveSpeed = 200.0f;
 constexpr unsigned int g_unSoldierFrameWidth = 128;
 constexpr unsigned int g_unSoldierFrameHeight = 128;
 constexpr float g_fSoldierScale = 3.333333f;
-constexpr float g_fSoldierFeetY = 930.0f;
+constexpr float g_fSoldierMinFeetY = 850.0f;
+constexpr float g_fSoldierMaxFeetY = 1030.0f;
 constexpr float g_fSoldierShadowScale = 0.85f;
 
 /*The camera starts scrolling forward once the soldier reaches the middle of the screen*/
@@ -241,7 +243,7 @@ void Fight::DrawSoldierShadow()
 
     rend->DrawPictureScaled(m_textureSoldierShadow,
                             m_fSoldierFeetX - fShadowWidth * 0.5f,
-                            g_fSoldierFeetY - fShadowHeight * 0.5f,
+                            m_fSoldierFeetY - fShadowHeight * 0.5f,
                             g_fSoldierShadowScale);
 }
 
@@ -251,8 +253,11 @@ void Fight::UpdateSoldierMovement()
 
     const bool bMoveLeft = glfwGetKey(rend->GetWindow(), GLFW_KEY_LEFT) == GLFW_PRESS;
     const bool bMoveRight = glfwGetKey(rend->GetWindow(), GLFW_KEY_RIGHT) == GLFW_PRESS;
+    const bool bMoveUp = glfwGetKey(rend->GetWindow(), GLFW_KEY_UP) == GLFW_PRESS;
+    const bool bMoveDown = glfwGetKey(rend->GetWindow(), GLFW_KEY_DOWN) == GLFW_PRESS;
     const int nDirection = static_cast<int>(bMoveRight) - static_cast<int>(bMoveLeft);
-    const bool bMoving = nDirection != 0;
+    const int nVerticalDirection = static_cast<int>(bMoveDown) - static_cast<int>(bMoveUp);
+    const bool bMoving = nDirection != 0 || nVerticalDirection != 0;
 
     if (bMoving)
     {
@@ -263,44 +268,59 @@ void Fight::UpdateSoldierMovement()
             m_bSoldierMoving = true;
         }
 
-        m_bSoldierFacingRight = nDirection > 0;
+        if (nDirection != 0)
+        {
+            m_bSoldierFacingRight = nDirection > 0;
+        }
 
         const float fDeltaTimeSeconds = MainApp::GetInstance().GetDeltaTime() / 1000.0f;
-        const float fMoveDistance = g_fSoldierMoveSpeed * fDeltaTimeSeconds;
         const float fScreenWidth = static_cast<float>(rend->SCREEN_WIDTH);
-        const float fForwardCameraAnchorX =
-            fScreenWidth * g_fForwardCameraAnchorScreenRatio;
-        const float fBackwardCameraAnchorX =
-            fScreenWidth * g_fBackwardCameraAnchorScreenRatio;
 
-        if (nDirection > 0)
+        if (nDirection != 0)
         {
-            /*Walk to the middle of the screen first, then scroll the world*/
-            const float fDistanceToAnchor =
-                std::max(0.0f, fForwardCameraAnchorX - m_fSoldierFeetX);
-            const float fSoldierMoveDistance = std::min(fMoveDistance, fDistanceToAnchor);
+            const float fMoveDistance = g_fSoldierMoveSpeed * fDeltaTimeSeconds;
+            const float fForwardCameraAnchorX =
+                fScreenWidth * g_fForwardCameraAnchorScreenRatio;
+            const float fBackwardCameraAnchorX =
+                fScreenWidth * g_fBackwardCameraAnchorScreenRatio;
 
-            m_fSoldierFeetX += fSoldierMoveDistance;
-            m_fWorldOffsetX += fMoveDistance - fSoldierMoveDistance;
+            if (nDirection > 0)
+            {
+                /*Walk to the middle of the screen first, then scroll the world*/
+                const float fDistanceToAnchor =
+                    std::max(0.0f, fForwardCameraAnchorX - m_fSoldierFeetX);
+                const float fSoldierMoveDistance = std::min(fMoveDistance, fDistanceToAnchor);
+
+                m_fSoldierFeetX += fSoldierMoveDistance;
+                m_fWorldOffsetX += fMoveDistance - fSoldierMoveDistance;
+            }
+            else
+            {
+                /*Walk back across the screen first, then scroll the world*/
+                const float fDistanceToAnchor =
+                    std::max(0.0f, m_fSoldierFeetX - fBackwardCameraAnchorX);
+                const float fSoldierMoveDistance = std::min(fMoveDistance, fDistanceToAnchor);
+
+                m_fSoldierFeetX -= fSoldierMoveDistance;
+                m_fWorldOffsetX -= fMoveDistance - fSoldierMoveDistance;
+            }
+
+            const float fHalfSoldierWidth =
+                static_cast<float>(g_unSoldierFrameWidth) * g_fSoldierScale * 0.5f;
+            const float fMaxFeetX = fScreenWidth - fHalfSoldierWidth;
+            const float fMinFeetX = std::min(fBackwardCameraAnchorX, fMaxFeetX);
+
+            m_fSoldierFeetX = std::clamp(m_fSoldierFeetX, fMinFeetX, fMaxFeetX);
+            m_fWorldOffsetX = std::max(0.0f, m_fWorldOffsetX);
         }
-        else
+
+        if (nVerticalDirection != 0)
         {
-            /*Walk back across the screen first, then scroll the world*/
-            const float fDistanceToAnchor =
-                std::max(0.0f, m_fSoldierFeetX - fBackwardCameraAnchorX);
-            const float fSoldierMoveDistance = std::min(fMoveDistance, fDistanceToAnchor);
-
-            m_fSoldierFeetX -= fSoldierMoveDistance;
-            m_fWorldOffsetX -= fMoveDistance - fSoldierMoveDistance;
+            m_fSoldierFeetY += static_cast<float>(nVerticalDirection) *
+                               g_fSoldierVerticalMoveSpeed * fDeltaTimeSeconds;
+            m_fSoldierFeetY =
+                std::clamp(m_fSoldierFeetY, g_fSoldierMinFeetY, g_fSoldierMaxFeetY);
         }
-
-        const float fHalfSoldierWidth =
-            static_cast<float>(g_unSoldierFrameWidth) * g_fSoldierScale * 0.5f;
-        const float fMaxFeetX = fScreenWidth - fHalfSoldierWidth;
-        const float fMinFeetX = std::min(fBackwardCameraAnchorX, fMaxFeetX);
-
-        m_fSoldierFeetX = std::clamp(m_fSoldierFeetX, fMinFeetX, fMaxFeetX);
-        m_fWorldOffsetX = std::max(0.0f, m_fWorldOffsetX);
     }
     else if (m_bSoldierMoving)
     {
@@ -314,7 +334,7 @@ void Fight::DrawSoldier()
 {
     const float fFrameSize = static_cast<float>(g_unSoldierFrameWidth) * g_fSoldierScale;
     const float fSoldierX = m_fSoldierFeetX - fFrameSize * 0.5f;
-    const float fSoldierY = g_fSoldierFeetY - fFrameSize;
+    const float fSoldierY = m_fSoldierFeetY - fFrameSize;
     const bool bFlipHorizontal = !m_bSoldierFacingRight;
 
     /*The shadow is drawn first, so the soldier stands on top of it*/
