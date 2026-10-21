@@ -292,6 +292,14 @@ void Roulette::RequestState(ERouletteStates eStateToRequest)
 
 void Roulette::StartNewGame(int unDemoSectorNumber)
 {
+    /*A new spin is only valid after the previous round has fully reset. Ignoring
+      the request while the wheel is holding prevents overlapping rounds and keeps
+      the state machine in sync when the player presses Enter repeatedly.*/
+    if (m_eState != ERouletteStates::eReadyForGame)
+    {
+        return;
+    }
+
     if (m_wheelArea.StartNewSpin(unDemoSectorNumber))
     {
         RequestState(ERouletteStates::eSpinning);

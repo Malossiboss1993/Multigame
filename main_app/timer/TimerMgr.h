@@ -12,8 +12,10 @@ private:
     /*Container holding all timer clients*/
     std::vector<ITimer*>m_vecClients;
 
-public:
+    /*Returns true while the client is still registered in m_vecClients*/
+    bool IsClientRegistered(const ITimer *client) const;
 
+public:
     virtual ~TimerMgr() {};
     void StartTimer(ITimer* client, unsigned int unID, unsigned int unPeriod);
     void StopTimer(ITimer* client, unsigned int unID);

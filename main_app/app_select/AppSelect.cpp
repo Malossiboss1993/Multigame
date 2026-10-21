@@ -8,6 +8,8 @@
 #include <main_app/audio_player/AudioPlayer.h>
 #include <debug/Logger.h>
 
+#include <vector>
+
 bool AppSelect::Init()
 {
     const auto &rend = MainApp::GetInstance().ptrRend;
@@ -22,6 +24,15 @@ bool AppSelect::Init()
     m_buttonParticleBuilder.textureButton = Texture::CreateTexture("../src/resources/particle_builder/particle_button.png");
 
     m_buttonRoulette.textureButton = Texture::CreateTexture("../src/resources/roulette/roulette_button.png");
+
+    if (!m_textureBackground ||
+        !m_buttonParticleBuilder.textureButton ||
+        !m_buttonKidsFantasy.textureButton ||
+        !m_buttonRoulette.textureButton)
+    {
+        LOG_ERROR("AppSelect - Unable to create textures !");
+        return false;
+    }
 
     if (!m_textureBackground->Load() ||
         !m_buttonParticleBuilder.textureButton->Load() ||
@@ -62,25 +73,46 @@ bool AppSelect::Init()
     RegisterClient(EApps::eParticleBuilder, &m_ParticleBuilder);
 
     /*Initalize all the applications*/
+    std::vector<IApp *> vecInitializedApps;
+    vecInitializedApps.reserve(m_mapAppClients.size());
+
+    const auto deinitializeInitializedApps = [&vecInitializedApps]()
+    {
+        for (auto it = vecInitializedApps.rbegin(); it != vecInitializedApps.rend(); ++it)
+        {
+            (*it)->Deinit();
+        }
+    };
+
     for (const auto &app : m_mapAppClients)
     {
         if (!app.second->Init())
         {
             LOG_ERROR("AppSelect - Cannot initialize client : \"{0}\"", app.second->GetAppName());
+
+            /*Roll back applications initialized before the failure*/
+            deinitializeInitializedApps();
             return false;
         }
+
+        vecInitializedApps.emplace_back(app.second);
     }
 
-    m_eState = EAppSelectStates::eReadyForSelection;
-
     auto textureStar = Texture::CreateTexture("../src/resources/particle_sun.png");
-    if (!textureStar->Load())
+    if (!textureStar || !textureStar->Load())
     {
         LOG_ERROR("AppSelect - Unable to load texture particle !");
+        deinitializeInitializedApps();
         return false;
     }
 
-    m_particleStarEffect.Init(textureStar, {rend->SCREEN_WIDTH / 2, rend->SCREEN_HEIGHT / 2});
+    if (!m_particleStarEffect.Init(textureStar, {rend->SCREEN_WIDTH / 2, rend->SCREEN_HEIGHT / 2}))
+    {
+        LOG_ERROR("AppSelect - Unable to initialize particle star effect !");
+        deinitializeInitializedApps();
+        return false;
+    }
+
     m_particleStarEffect.SetVelocityVariation({2.5f, 2.0f});
     m_particleStarEffect.SetSizeBegin(0.001f);
     m_particleStarEffect.SetSizeEnd(1.0f);
@@ -88,81 +120,89 @@ bool AppSelect::Init()
     m_particleStarEffect.SetDensity(30.0f);
     m_particleStarEffect.StartEmitting();
 
+    m_eState = EAppSelectStates::eReadyForSelection;
+
     LOG_INFO("AppSelect - Initialized ...");
     return true;
 }
 
 bool AppSelect::Deinit()
 {
+    /*Stop the particle timer before the applications are deinitialized*/
+    m_particleStarEffect.Reset();
+
+    bool bDeinitialized = true;
+
     /*Deinitialize all the applications*/
     for (const auto &app : m_mapAppClients)
     {
         if (!app.second->Deinit())
         {
             LOG_ERROR("AppSelect - Cannot Deinitialize client : \"{0}\"", app.second->GetAppName());
-            break;
+            bDeinitialized = false;
         }
     }
 
+    m_mapAppClients.clear();
+    m_eCurrentApp = EApps::eAppSelect;
+    m_eState = EAppSelectStates::eInactive;
+
     LOG_WARN("AppSelect - Deinitialzied ...");
-    return true;
+    return bDeinitialized;
 }
 
 bool AppSelect::HandleEvent()
 {
     /*Hover on Game Buttons*/
-    const auto &nXMouse = ImGui::GetMousePos().x;
-    const auto &nYMouse = ImGui::GetMousePos().y;
+    const int nXMouse = static_cast<int>(ImGui::GetMousePos().x);
+    const int nYMouse = static_cast<int>(ImGui::GetMousePos().y);
 
     switch (m_eState)
     {
     case EAppSelectStates::eReadyForSelection:
     {
+        /*Update every hover flag before handling a click, so moving the mouse
+          between buttons cannot leave another button highlighted.*/
         m_bIsKidsFantasyHovered = m_buttonKidsFantasy.IsHovered(nXMouse, nYMouse);
-        if (m_bIsKidsFantasyHovered)
-        {
-            /*Select Kids Fantasy*/
-            if (m_buttonKidsFantasy.IsPressed(nXMouse, nYMouse))
-            {
-                RequestTransition(EApps::eKidsFantasy);
-                MainApp::GetInstance().ptrAudioPlayer->PlaySound("../src/resources/panel/sounds/enter.wav");
-                return true;
-            }
-
-            return true;
-        }
-
-        m_bIsParticleBuilder = m_buttonParticleBuilder.IsHovered(nXMouse, nYMouse);
-        if (m_bIsParticleBuilder)
-        {
-            /*Select Particle Builder*/
-            if (m_buttonParticleBuilder.IsPressed(nXMouse, nYMouse))
-            {
-                RequestTransition(EApps::eParticleBuilder);
-                return true;
-            }
-
-            return true;
-        }
-
+        m_bIsParticleBuilderHovered = m_buttonParticleBuilder.IsHovered(nXMouse, nYMouse);
         m_bIsRouletteHovered = m_buttonRoulette.IsHovered(nXMouse, nYMouse);
-        if (m_bIsRouletteHovered)
+
+        bool bAppSelected = false;
+        EApps eSelectedApp = EApps::eAppSelect;
+
+        if (m_bIsKidsFantasyHovered && m_buttonKidsFantasy.IsPressed(nXMouse, nYMouse))
         {
-            /*Select Roulette*/
-            if (m_buttonRoulette.IsPressed(nXMouse, nYMouse))
-            {
-                RequestTransition(EApps::eRoulette);
-                MainApp::GetInstance().ptrAudioPlayer->PlaySound("../src/resources/panel/sounds/enter.wav");
-                return true;
-            }
+            eSelectedApp = EApps::eKidsFantasy;
+            bAppSelected = true;
+        }
+        else if (m_bIsParticleBuilderHovered && m_buttonParticleBuilder.IsPressed(nXMouse, nYMouse))
+        {
+            eSelectedApp = EApps::eParticleBuilder;
+            bAppSelected = true;
+        }
+        else if (m_bIsRouletteHovered && m_buttonRoulette.IsPressed(nXMouse, nYMouse))
+        {
+            eSelectedApp = EApps::eRoulette;
+            bAppSelected = true;
+        }
+
+        if (bAppSelected && RequestTransition(eSelectedApp))
+        {
+            MainApp::GetInstance().ptrAudioPlayer->PlaySound("../src/resources/panel/sounds/enter.wav");
             return true;
         }
+
+        return m_bIsKidsFantasyHovered ||
+               m_bIsParticleBuilderHovered ||
+               m_bIsRouletteHovered;
     }
-    break;
 
     case EAppSelectStates::eBusyInGame:
     {
-        m_mapAppClients[m_eCurrentApp]->HandleEvent();
+        if (IApp *app = GetAppClient(m_eCurrentApp))
+        {
+            app->HandleEvent();
+        }
     }
     break;
 
@@ -175,85 +215,53 @@ bool AppSelect::HandleEvent()
 
 bool AppSelect::RequestTransition(const EApps eAppToTransition)
 {
+    /*From App Select to an application*/
     if (m_eState == EAppSelectStates::eReadyForSelection)
     {
-        /*From App Select to Kids Fantasy*/
-        if (eAppToTransition == EApps::eKidsFantasy)
+        if (eAppToTransition == EApps::eAppSelect)
         {
-            LOG_INFO("AppSelect - Requesting Transition to App Kids Fantasy");
-            OnExitFromAppSelect();
-            m_eCurrentApp = EApps::eKidsFantasy;
-            m_eState = EAppSelectStates::eBusyInGame;
-            m_mapAppClients[m_eCurrentApp]->OnEnter();
-
-            return true;
+            LOG_ERROR("AppSelect - Cannot transition from App Select to App Select");
+            return false;
         }
 
-        /*From App Select to Particle Builder*/
-        if (eAppToTransition == EApps::eParticleBuilder)
+        IApp *appToEnter = GetAppClient(eAppToTransition);
+        if (appToEnter == nullptr)
         {
-            LOG_INFO("AppSelect - Requesting Transition to App Particle Builder");
-            OnExitFromAppSelect();
-            m_eCurrentApp = EApps::eParticleBuilder;
-            m_eState = EAppSelectStates::eBusyInGame;
-            m_mapAppClients[m_eCurrentApp]->OnEnter();
-
-            return true;
+            return false;
         }
-        /*From App Select to Roulette*/
-        else if (eAppToTransition == EApps::eRoulette)
-        {
-            LOG_INFO("AppSelect - Requesting Transition to App Roulette");
-            OnExitFromAppSelect();
-            m_eCurrentApp = EApps::eRoulette;
-            m_eState = EAppSelectStates::eBusyInGame;
-            m_mapAppClients[m_eCurrentApp]->OnEnter();
 
-            return true;
-        }
+        LOG_INFO("AppSelect - Requesting Transition to App \"{0}\"", appToEnter->GetAppName());
+
+        OnExitFromAppSelect();
+        m_eCurrentApp = eAppToTransition;
+        m_eState = EAppSelectStates::eBusyInGame;
+        appToEnter->OnEnter();
+
+        return true;
     }
-    /*From App to App Select*/
-    else if (m_eState == EAppSelectStates::eBusyInGame)
+
+    /*From an application back to App Select*/
+    if (m_eState == EAppSelectStates::eBusyInGame &&
+        eAppToTransition == EApps::eAppSelect)
     {
-        /*From Kids Fantasy to App Select*/
-        if (eAppToTransition == EApps::eAppSelect &&
-            m_eCurrentApp == EApps::eKidsFantasy)
+        IApp *appToExit = GetAppClient(m_eCurrentApp);
+        if (appToExit == nullptr)
         {
-            LOG_INFO("AppSelect - Requesting Transition to App Select");
-            m_mapAppClients[m_eCurrentApp]->OnExit();
-            m_eCurrentApp = EApps::eAppSelect;
-            m_eState = EAppSelectStates::eReadyForSelection;
-            OnEnterInAppSelect();
-
-            return true;
+            return false;
         }
-        /*From Particle Builder to App Select*/
-        if (eAppToTransition == EApps::eAppSelect &&
-            m_eCurrentApp == EApps::eParticleBuilder)
-        {
-            LOG_INFO("AppSelect - Requesting Transition to App Select");
-            m_mapAppClients[m_eCurrentApp]->OnExit();
-            m_eCurrentApp = EApps::eAppSelect;
-            m_eState = EAppSelectStates::eReadyForSelection;
-            OnEnterInAppSelect();
 
-            return true;
-        }
-        /*From Roulette to App Select*/
-        else if (eAppToTransition == EApps::eAppSelect &&
-                 m_eCurrentApp == EApps::eRoulette)
-        {
-            LOG_INFO("AppSelect - Requesting Transition to App Select");
-            m_mapAppClients[m_eCurrentApp]->OnExit();
-            m_eCurrentApp = EApps::eAppSelect;
-            m_eState = EAppSelectStates::eReadyForSelection;
-            OnEnterInAppSelect();
+        LOG_INFO("AppSelect - Requesting Transition to App Select");
 
-            return true;
-        }
+        appToExit->OnExit();
+        m_eCurrentApp = EApps::eAppSelect;
+        m_eState = EAppSelectStates::eReadyForSelection;
+        OnEnterInAppSelect();
+
+        return true;
     }
 
-    LOG_ERROR("AppSelect - Impossible Transition to App");
+    LOG_ERROR("AppSelect - Impossible transition from state \"{0}\" to app \"{1}\"",
+              static_cast<int>(m_eState), static_cast<int>(eAppToTransition));
     return false;
 }
 
@@ -264,17 +272,55 @@ const EAppSelectStates &AppSelect::GetState()
 
 void AppSelect::OnEnterInAppSelect()
 {
+    m_bIsKidsFantasyHovered = false;
+    m_bIsParticleBuilderHovered = false;
+    m_bIsRouletteHovered = false;
+
+    m_particleStarEffect.StartEmitting();
+
     LOG_INFO("AppSelect - Enter in App Select succeed");
 }
 
 void AppSelect::OnExitFromAppSelect()
 {
+    m_bIsKidsFantasyHovered = false;
+    m_bIsParticleBuilderHovered = false;
+    m_bIsRouletteHovered = false;
+
+    /*The effect is not drawn while a game is active, so stop its timer instead
+      of letting it emit in the background.*/
+    m_particleStarEffect.Reset();
+
     LOG_INFO("AppSelect - Exit from App Select succeed");
+}
+
+IApp *AppSelect::GetAppClient(const EApps eApp) const
+{
+    const auto it = m_mapAppClients.find(eApp);
+    if (it == m_mapAppClients.end() || it->second == nullptr)
+    {
+        LOG_ERROR("AppSelect - No registered client for app \"{0}\"", static_cast<int>(eApp));
+        return nullptr;
+    }
+
+    return it->second;
 }
 
 void AppSelect::RegisterClient(EApps eApp, IApp *client)
 {
-    m_mapAppClients.emplace(std::make_pair(eApp, client));
+    if (client == nullptr)
+    {
+        LOG_ERROR("AppSelect - Cannot register a null client");
+        return;
+    }
+
+    const auto result = m_mapAppClients.emplace(eApp, client);
+    if (!result.second)
+    {
+        LOG_WARN("AppSelect - Client for app \"{0}\" is already registered",
+                 static_cast<int>(eApp));
+        return;
+    }
 
     LOG_INFO("AppSelect - Registered client : \"{0}\"", client->GetAppName());
     LOG_INFO("AppSelect - Current size of AppClientsContainer: \"{0}\"", m_mapAppClients.size());
@@ -282,12 +328,22 @@ void AppSelect::RegisterClient(EApps eApp, IApp *client)
 
 void AppSelect::UnregisterClient(EApps eApp, IApp *client)
 {
-    const auto &it = m_mapAppClients.find(eApp);
-    if (it != m_mapAppClients.end())
+    const auto it = m_mapAppClients.find(eApp);
+    if (it == m_mapAppClients.end())
     {
-        LOG_INFO("AppSelect - Unregistered client : \"{0}\"", it->second->GetAppName());
-        m_mapAppClients.erase(eApp);
+        LOG_WARN("AppSelect - Cannot unregister unknown app \"{0}\"", static_cast<int>(eApp));
+        return;
     }
+
+    if (it->second != client)
+    {
+        LOG_WARN("AppSelect - Cannot unregister client for app \"{0}\": client mismatch",
+                 static_cast<int>(eApp));
+        return;
+    }
+
+    LOG_INFO("AppSelect - Unregistered client : \"{0}\"", it->second->GetAppName());
+    m_mapAppClients.erase(it);
 
     LOG_INFO("AppSelect - Current size of AppClientsContainer: \"{0}\"", m_mapAppClients.size());
 }
@@ -306,38 +362,29 @@ void AppSelect::OnDraw()
         /*Draw Particle Star*/
         m_particleStarEffect.Draw();
 
-        /*Draw Button Kids Fantasy*/
-        if (m_bIsKidsFantasyHovered)
+        const auto drawButton = [&rend](const Button &button, bool bHovered)
         {
-            rend->SetColor(1.0f, 1.0f, 1.0f, 0.5f);
-        }
+            if (bHovered)
+            {
+                rend->SetColor(1.0f, 1.0f, 1.0f, 0.5f);
+            }
 
-        rend->DrawPicture(m_buttonKidsFantasy.textureButton, m_buttonKidsFantasy.fX, m_buttonKidsFantasy.fY);
-        rend->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+            rend->DrawPicture(button.textureButton, button.fX, button.fY);
+            rend->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+        };
 
-        /*Draw Button Particle Builder*/
-        if (m_bIsParticleBuilder)
-        {
-            rend->SetColor(1.0f, 1.0f, 1.0f, 0.5f);
-        }
-
-        rend->DrawPicture(m_buttonParticleBuilder.textureButton, m_buttonParticleBuilder.fX, m_buttonParticleBuilder.fY);
-        rend->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
-
-        /*Draw Button Roulette*/
-        if (m_bIsRouletteHovered)
-        {
-            rend->SetColor(1.0f, 1.0f, 1.0f, 0.5f);
-        }
-
-        rend->DrawPicture(m_buttonRoulette.textureButton, m_buttonRoulette.fX, m_buttonRoulette.fY);
-        rend->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+        drawButton(m_buttonKidsFantasy, m_bIsKidsFantasyHovered);
+        drawButton(m_buttonParticleBuilder, m_bIsParticleBuilderHovered);
+        drawButton(m_buttonRoulette, m_bIsRouletteHovered);
     }
     break;
 
     case EAppSelectStates::eBusyInGame:
     {
-        m_mapAppClients[m_eCurrentApp]->OnDraw();
+        if (IApp *app = GetAppClient(m_eCurrentApp))
+        {
+            app->OnDraw();
+        }
     }
     break;
 

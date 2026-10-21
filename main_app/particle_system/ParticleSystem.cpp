@@ -228,8 +228,20 @@ void ParticleSystem::StopEmitting()
 
 void ParticleSystem::DieImmediately()
 {
+    Reset();
+}
+
+void ParticleSystem::Reset()
+{
     m_eState = EParticleStates::eInactive;
     m_unParticleIndex = 0;
+
+    for (auto &particle : m_vecParticles)
+    {
+        particle.bIsActive = false;
+        particle.fLifeRemaining = 0.0f;
+    }
+
     MainApp::GetInstance().ptrTimer->StopTimer(this, g_unTimerUpdate);
     MainApp::GetInstance().ptrTimer->EraseClient(this);
 }

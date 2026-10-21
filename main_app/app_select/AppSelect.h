@@ -14,8 +14,8 @@ enum class EApps
     eKidsFantasy,
     eParticleBuilder,
     eRoulette,
-    eTotalAppsCount,
-    eAppSelect
+    eAppSelect,
+    eTotalAppsCount
 };
 
 enum class EAppSelectStates
@@ -32,7 +32,7 @@ class AppSelect
 private:
     /*boolean flags button hovered*/
     bool m_bIsKidsFantasyHovered = false;
-    bool m_bIsParticleBuilder = false;
+    bool m_bIsParticleBuilderHovered = false;
     bool m_bIsRouletteHovered = false;
 
     /*Current active app*/
@@ -67,6 +67,9 @@ private:
 
     /*Particle System Star Effect*/
     ParticleSystem m_particleStarEffect;
+
+    /*Return the registered client for an application, or nullptr if invalid*/
+    IApp *GetAppClient(EApps eApp) const;
 
     /*Enter from App to AppSelect*/
     void OnEnterInAppSelect();

@@ -106,6 +106,7 @@ public:
     void StartEmitting();
     void StopEmitting();
     void DieImmediately();
+    void Reset();
 
     /*Set Properties*/
     void SetPosition(glm::vec2 vec2Postion);

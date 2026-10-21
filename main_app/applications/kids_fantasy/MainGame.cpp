@@ -152,6 +152,9 @@ void KidsFantasy::InvokeStartButton(bool bDemoMode)
         m_statusLine.StopWinScenario();
         m_lines.Stop();
         RequestState(EKidsFantasyStates::eReadyForGame);
+
+        /*Collecting a win must not also start a new game in the same press.*/
+        return;
     }
 
     /*Start new Game*/
