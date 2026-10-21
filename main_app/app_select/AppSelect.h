@@ -3,6 +3,7 @@
 #include <main_app/applications/IApp.h>
 #include <main_app/texture/Texture.h>
 #include <main_app/button/Button.h>
+#include <main_app/applications/fight/MainGame.h>
 #include <main_app/applications/kids_fantasy/MainGame.h>
 #include <main_app/applications/particle_builder/MainGame.h>
 #include <main_app/applications/roulette/MainGame.h>
@@ -14,6 +15,7 @@ enum class EApps
     eKidsFantasy,
     eParticleBuilder,
     eRoulette,
+    eFight,
     eAppSelect,
     eTotalAppsCount
 };
@@ -34,6 +36,7 @@ private:
     bool m_bIsKidsFantasyHovered = false;
     bool m_bIsParticleBuilderHovered = false;
     bool m_bIsRouletteHovered = false;
+    bool m_bIsFightHovered = false;
 
     /*Current active app*/
     EApps m_eCurrentApp = EApps::eAppSelect;
@@ -56,6 +59,9 @@ private:
     /*Roulette Button*/
     Button m_buttonRoulette;
 
+    /*Fight Button*/
+    Button m_buttonFight;
+
     /*Kids Fantasy object*/
     KidsFantasy m_KidsFantasy;
 
@@ -64,6 +70,9 @@ private:
 
     /*Roulette object;*/
     Roulette m_Roulette;
+
+    /*Fight object*/
+    Fight m_Fight;
 
     /*Particle System Star Effect*/
     ParticleSystem m_particleStarEffect;

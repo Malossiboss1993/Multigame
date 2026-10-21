@@ -8,6 +8,7 @@
 #include <main_app/audio_player/AudioPlayer.h>
 #include <debug/Logger.h>
 
+#include <algorithm>
 #include <vector>
 
 bool AppSelect::Init()
@@ -25,10 +26,13 @@ bool AppSelect::Init()
 
     m_buttonRoulette.textureButton = Texture::CreateTexture("../src/resources/roulette/roulette_button.png");
 
+    m_buttonFight.textureButton = Texture::CreateTexture("../src/resources/fight/fight_button.png");
+
     if (!m_textureBackground ||
         !m_buttonParticleBuilder.textureButton ||
         !m_buttonKidsFantasy.textureButton ||
-        !m_buttonRoulette.textureButton)
+        !m_buttonRoulette.textureButton ||
+        !m_buttonFight.textureButton)
     {
         LOG_ERROR("AppSelect - Unable to create textures !");
         return false;
@@ -37,31 +41,54 @@ bool AppSelect::Init()
     if (!m_textureBackground->Load() ||
         !m_buttonParticleBuilder.textureButton->Load() ||
         !m_buttonKidsFantasy.textureButton->Load() ||
-        !m_buttonRoulette.textureButton->Load())
+        !m_buttonRoulette.textureButton->Load() ||
+        !m_buttonFight.textureButton->Load())
     {
         LOG_ERROR("AppSelect - Unable to load textures !");
         return false;
     }
 
-    /*Position the 3 app buttons evenly distributed in one row across the screen,
-      based on the current screen size.*/
-    Button *buttons[] = { &m_buttonKidsFantasy, &m_buttonRoulette, &m_buttonParticleBuilder };
+    /*Keep the existing three apps in the first row and place Fight in the
+      second row under Kids Fantasy, based on the current screen size.*/
+    Button *firstRowButtons[] = { &m_buttonKidsFantasy, &m_buttonRoulette, &m_buttonParticleBuilder };
 
-    float totalWidth = 0.0f;
-    for (auto *btn : buttons)
+    float firstRowWidth = 0.0f;
+    float maxButtonHeight = 0.0f;
+
+    for (auto *btn : firstRowButtons)
     {
-        totalWidth += static_cast<float>(btn->textureButton->GetWidth());
+        firstRowWidth += static_cast<float>(btn->textureButton->GetWidth());
+        maxButtonHeight = std::max(maxButtonHeight,
+                                   static_cast<float>(btn->textureButton->GetHeight()));
     }
 
-    const float margin = (screenWidth - totalWidth) / 4.0f;
+    maxButtonHeight = std::max(maxButtonHeight,
+                               static_cast<float>(m_buttonFight.textureButton->GetHeight()));
+
+    const float margin = (screenWidth - firstRowWidth) / 4.0f;
+    const float rowGap = 70.0f;
+    const float totalHeight = maxButtonHeight * 2.0f + rowGap;
+    const float firstRowY = (screenHeight - totalHeight) / 2.0f;
+
     float currentX = margin;
 
-    for (auto *btn : buttons)
+    for (auto *btn : firstRowButtons)
     {
+        const float buttonHeight = static_cast<float>(btn->textureButton->GetHeight());
+
         btn->fX = currentX;
-        btn->fY = (screenHeight - static_cast<float>(btn->textureButton->GetHeight())) / 2.0f;
+        btn->fY = firstRowY + (maxButtonHeight - buttonHeight) / 2.0f;
         currentX += static_cast<float>(btn->textureButton->GetWidth()) + margin;
     }
+
+    const float fightButtonWidth = static_cast<float>(m_buttonFight.textureButton->GetWidth());
+    const float fightButtonHeight = static_cast<float>(m_buttonFight.textureButton->GetHeight());
+
+    m_buttonFight.fX = m_buttonKidsFantasy.fX +
+                       (static_cast<float>(m_buttonKidsFantasy.textureButton->GetWidth()) -
+                        fightButtonWidth) / 2.0f;
+    m_buttonFight.fY = firstRowY + maxButtonHeight + rowGap +
+                       (maxButtonHeight - fightButtonHeight) / 2.0f;
 
     /*Register Client Kids Fantasy*/
     RegisterClient(EApps::eKidsFantasy, &m_KidsFantasy);
@@ -71,6 +98,9 @@ bool AppSelect::Init()
 
     /*Register Client Particle Builder*/
     RegisterClient(EApps::eParticleBuilder, &m_ParticleBuilder);
+
+    /*Register Client Fight*/
+    RegisterClient(EApps::eFight, &m_Fight);
 
     /*Initalize all the applications*/
     std::vector<IApp *> vecInitializedApps;
@@ -166,6 +196,7 @@ bool AppSelect::HandleEvent()
         m_bIsKidsFantasyHovered = m_buttonKidsFantasy.IsHovered(nXMouse, nYMouse);
         m_bIsParticleBuilderHovered = m_buttonParticleBuilder.IsHovered(nXMouse, nYMouse);
         m_bIsRouletteHovered = m_buttonRoulette.IsHovered(nXMouse, nYMouse);
+        m_bIsFightHovered = m_buttonFight.IsHovered(nXMouse, nYMouse);
 
         bool bAppSelected = false;
         EApps eSelectedApp = EApps::eAppSelect;
@@ -185,6 +216,11 @@ bool AppSelect::HandleEvent()
             eSelectedApp = EApps::eRoulette;
             bAppSelected = true;
         }
+        else if (m_bIsFightHovered && m_buttonFight.IsPressed(nXMouse, nYMouse))
+        {
+            eSelectedApp = EApps::eFight;
+            bAppSelected = true;
+        }
 
         if (bAppSelected && RequestTransition(eSelectedApp))
         {
@@ -194,7 +230,8 @@ bool AppSelect::HandleEvent()
 
         return m_bIsKidsFantasyHovered ||
                m_bIsParticleBuilderHovered ||
-               m_bIsRouletteHovered;
+               m_bIsRouletteHovered ||
+               m_bIsFightHovered;
     }
 
     case EAppSelectStates::eBusyInGame:
@@ -275,6 +312,7 @@ void AppSelect::OnEnterInAppSelect()
     m_bIsKidsFantasyHovered = false;
     m_bIsParticleBuilderHovered = false;
     m_bIsRouletteHovered = false;
+    m_bIsFightHovered = false;
 
     m_particleStarEffect.StartEmitting();
 
@@ -286,6 +324,7 @@ void AppSelect::OnExitFromAppSelect()
     m_bIsKidsFantasyHovered = false;
     m_bIsParticleBuilderHovered = false;
     m_bIsRouletteHovered = false;
+    m_bIsFightHovered = false;
 
     /*The effect is not drawn while a game is active, so stop its timer instead
       of letting it emit in the background.*/
@@ -376,6 +415,7 @@ void AppSelect::OnDraw()
         drawButton(m_buttonKidsFantasy, m_bIsKidsFantasyHovered);
         drawButton(m_buttonParticleBuilder, m_bIsParticleBuilderHovered);
         drawButton(m_buttonRoulette, m_bIsRouletteHovered);
+        drawButton(m_buttonFight, m_bIsFightHovered);
     }
     break;
 
