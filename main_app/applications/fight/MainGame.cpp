@@ -11,13 +11,29 @@ Fight::Fight()
 
 bool Fight::Init()
 {
-    /*Placeholder background until the Fight artwork is created*/
-    m_textureBackground = Texture::CreateTexture("../src/resources/kids_fantasy/kids_fantasy_background.png");
-
-    if (!m_textureBackground || !m_textureBackground->Load())
+    /*Load background layers in drawing order: 1 (back) to 5 (front)*/
+    const std::vector<std::string> vecBackgroundPaths =
     {
-        LOG_ERROR("Fight - Unable to load texture background !");
-        return false;
+        "../src/resources/fight/background_1/1.png",
+        "../src/resources/fight/background_1/2.png",
+        "../src/resources/fight/background_1/3.png",
+        "../src/resources/fight/background_1/4.png",
+        "../src/resources/fight/background_1/5.png"
+    };
+
+    m_vecTexturesBackground.reserve(vecBackgroundPaths.size());
+
+    for (const auto &strPath : vecBackgroundPaths)
+    {
+        auto textureBackground = Texture::CreateTexture(strPath);
+
+        if (!textureBackground || !textureBackground->Load())
+        {
+            LOG_ERROR("Fight - Unable to load background layer \"{0}\" !", strPath);
+            return false;
+        }
+
+        m_vecTexturesBackground.emplace_back(textureBackground);
     }
 
     LOG_INFO("Fight - Initialized ...");
@@ -58,8 +74,18 @@ void Fight::OnDraw()
 {
     const auto &rend = MainApp::GetInstance().ptrRend;
 
-    /*Draw placeholder background*/
-    rend->DrawPicture(m_textureBackground, 0.0f, 0.0f);
+    /*Draw background layers from back to front*/
+    if (!m_vecTexturesBackground.empty())
+    {
+        const float fScaleFactor =
+            static_cast<float>(rend->SCREEN_WIDTH) /
+            static_cast<float>(m_vecTexturesBackground.front()->GetWidth());
+
+        for (const auto &textureBackground : m_vecTexturesBackground)
+        {
+            rend->DrawPictureScaled(textureBackground, 0.0f, 0.0f, fScaleFactor);
+        }
+    }
 
     /*Draw Panel, including the Home button used to exit*/
     MainApp::GetInstance().ptrPanel->OnDraw();

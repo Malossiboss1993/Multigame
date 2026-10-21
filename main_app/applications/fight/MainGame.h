@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include <main_app/applications/IApp.h>
 #include <main_app/texture/Texture.h>
@@ -12,8 +13,8 @@ class Fight : public IApp, public ITimer
 private:
     std::string m_strAppName = "Fight";
 
-    /*Texture main background*/
-    std::shared_ptr<Texture> m_textureBackground;
+    /*Textures background layers, drawn from back to front*/
+    std::vector<std::shared_ptr<Texture>> m_vecTexturesBackground;
 
 public:
     Fight();
