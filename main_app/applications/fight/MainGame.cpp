@@ -1,6 +1,7 @@
 #include "MainGame.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 
 #include <main_app/MainApp.h>
@@ -16,6 +17,25 @@ constexpr unsigned int g_unSoldierFrameHeight = 128;
 constexpr float g_fSoldierScale = 3.333333f;
 constexpr float g_fSoldierFeetY = 930.0f;
 constexpr float g_fSoldierShadowScale = 0.85f;
+
+/*The camera starts scrolling forward once the soldier reaches the middle of the screen*/
+constexpr float g_fForwardCameraAnchorScreenRatio = 0.5f;
+
+/*When walking back, the soldier moves across the screen first and the camera
+  starts following once he reaches the left edge of the playable area*/
+constexpr float g_fBackwardCameraAnchorScreenRatio = 1.0f / 25.0f;
+
+/*Parallax factors for layers 1 to 5: far layers move slower, near layers move faster*/
+constexpr float g_arrBackgroundParallaxFactors[] =
+{
+    0.2f,
+    0.4f,
+    0.6f,
+    0.8f,
+    1.0f
+};
+constexpr std::size_t g_unBackgroundParallaxFactorsCount =
+    sizeof(g_arrBackgroundParallaxFactors) / sizeof(g_arrBackgroundParallaxFactors[0]);
 
 /*Draw the soldier behind the foreground cactus layer*/
 constexpr std::size_t g_unSoldierBackgroundLayerIndex = 4;
@@ -47,6 +67,9 @@ bool Fight::Init()
             LOG_ERROR("Zombie Land - Unable to load background layer \"{0}\" !", strPath);
             return false;
         }
+
+        /*The background layers are tiled horizontally for the parallax scroll*/
+        textureBackground->SetWrapModeS(GL_REPEAT);
 
         m_vecTexturesBackground.emplace_back(textureBackground);
     }
@@ -155,7 +178,7 @@ void Fight::OnDraw()
             DrawSoldier();
         }
 
-        rend->DrawPictureScaled(m_vecTexturesBackground[unLayerIndex], 0.0f, 0.0f, fBackgroundScaleFactor);
+        DrawBackgroundLayer(unLayerIndex, fBackgroundScaleFactor);
     }
 
     if (unSoldierLayerIndex >= m_vecTexturesBackground.size())
@@ -165,6 +188,42 @@ void Fight::OnDraw()
 
     /*Draw Panel, including the Home button used to exit*/
     MainApp::GetInstance().ptrPanel->OnDraw();
+}
+
+void Fight::DrawBackgroundLayer(std::size_t unLayerIndex, float fScaleFactor)
+{
+    if (unLayerIndex >= m_vecTexturesBackground.size() ||
+        unLayerIndex >= g_unBackgroundParallaxFactorsCount)
+    {
+        return;
+    }
+
+    const auto &rend = MainApp::GetInstance().ptrRend;
+    const auto &textureBackground = m_vecTexturesBackground[unLayerIndex];
+    const float fLayerWidth = static_cast<float>(textureBackground->GetWidth()) * fScaleFactor;
+
+    if (fLayerWidth <= 0.0f)
+    {
+        return;
+    }
+
+    const float fLayerScroll =
+        m_fWorldOffsetX * g_arrBackgroundParallaxFactors[unLayerIndex];
+    float fScrollOffset = std::fmod(fLayerScroll, fLayerWidth);
+
+    if (fScrollOffset < 0.0f)
+    {
+        fScrollOffset += fLayerWidth;
+    }
+
+    const float fScreenWidth = static_cast<float>(rend->SCREEN_WIDTH);
+    const float fStartX = -fScrollOffset;
+
+    /*A background texture is one screen wide, so repeat it to cover the view*/
+    for (float fX = fStartX; fX < fScreenWidth; fX += fLayerWidth)
+    {
+        rend->DrawPictureScaled(textureBackground, fX, 0.0f, fScaleFactor);
+    }
 }
 
 void Fight::DrawSoldierShadow()
@@ -207,12 +266,41 @@ void Fight::UpdateSoldierMovement()
         m_bSoldierFacingRight = nDirection > 0;
 
         const float fDeltaTimeSeconds = MainApp::GetInstance().GetDeltaTime() / 1000.0f;
-        m_fSoldierFeetX += static_cast<float>(nDirection) * g_fSoldierMoveSpeed * fDeltaTimeSeconds;
+        const float fMoveDistance = g_fSoldierMoveSpeed * fDeltaTimeSeconds;
+        const float fScreenWidth = static_cast<float>(rend->SCREEN_WIDTH);
+        const float fForwardCameraAnchorX =
+            fScreenWidth * g_fForwardCameraAnchorScreenRatio;
+        const float fBackwardCameraAnchorX =
+            fScreenWidth * g_fBackwardCameraAnchorScreenRatio;
+
+        if (nDirection > 0)
+        {
+            /*Walk to the middle of the screen first, then scroll the world*/
+            const float fDistanceToAnchor =
+                std::max(0.0f, fForwardCameraAnchorX - m_fSoldierFeetX);
+            const float fSoldierMoveDistance = std::min(fMoveDistance, fDistanceToAnchor);
+
+            m_fSoldierFeetX += fSoldierMoveDistance;
+            m_fWorldOffsetX += fMoveDistance - fSoldierMoveDistance;
+        }
+        else
+        {
+            /*Walk back across the screen first, then scroll the world*/
+            const float fDistanceToAnchor =
+                std::max(0.0f, m_fSoldierFeetX - fBackwardCameraAnchorX);
+            const float fSoldierMoveDistance = std::min(fMoveDistance, fDistanceToAnchor);
+
+            m_fSoldierFeetX -= fSoldierMoveDistance;
+            m_fWorldOffsetX -= fMoveDistance - fSoldierMoveDistance;
+        }
 
         const float fHalfSoldierWidth =
             static_cast<float>(g_unSoldierFrameWidth) * g_fSoldierScale * 0.5f;
-        const float fMaxFeetX = static_cast<float>(rend->SCREEN_WIDTH) - fHalfSoldierWidth;
-        m_fSoldierFeetX = std::clamp(m_fSoldierFeetX, fHalfSoldierWidth, fMaxFeetX);
+        const float fMaxFeetX = fScreenWidth - fHalfSoldierWidth;
+        const float fMinFeetX = std::min(fBackwardCameraAnchorX, fMaxFeetX);
+
+        m_fSoldierFeetX = std::clamp(m_fSoldierFeetX, fMinFeetX, fMaxFeetX);
+        m_fWorldOffsetX = std::max(0.0f, m_fWorldOffsetX);
     }
     else if (m_bSoldierMoving)
     {

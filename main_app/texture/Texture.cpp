@@ -177,6 +177,17 @@ void Texture::SetFlipFormat(Texture::EFlipFormat eFlipFormat)
     SetTexCoords(m_eFlipFormat);
 }
 
+void Texture::SetWrapModeS(GLenum eWrapMode)
+{
+    if (m_unTextureID == 0)
+    {
+        return;
+    }
+
+    glBindTexture(GL_TEXTURE_2D, m_unTextureID);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, eWrapMode);
+}
+
 const glm::vec2 &Texture::GetTexCoord(Texture::ETexCoords eTexCoord) const
 {
     return m_arrTexCoords.at(Utils::ToNum(eTexCoord));

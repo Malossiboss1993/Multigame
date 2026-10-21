@@ -132,6 +132,12 @@ public:
     void SetFlipFormat(EFlipFormat eFlipFormat);
 
     /**
+     * @brief SetWrapModeS - sets the horizontal texture wrap mode.
+     * @param eWrapMode - OpenGL wrap mode, for example GL_REPEAT.
+     */
+    void SetWrapModeS(GLenum eWrapMode);
+
+    /**
      * @brief GetTextureCoords - return the texture coordinates, used to sample
      * from this texture.
      * @return m_arrTexCoords.

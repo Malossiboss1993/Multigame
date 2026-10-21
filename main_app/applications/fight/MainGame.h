@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -25,7 +26,11 @@ private:
     AnimPlayer m_animSoldierWalk;
     std::shared_ptr<Texture> m_textureSoldierShadow;
 
+    /*Horizontal world scroll, used for the parallax backgrounds*/
+    float m_fWorldOffsetX = 0.0f;
+
     void UpdateSoldierMovement();
+    void DrawBackgroundLayer(std::size_t unLayerIndex, float fScaleFactor);
     void DrawSoldier();
     void DrawSoldierShadow();
 
