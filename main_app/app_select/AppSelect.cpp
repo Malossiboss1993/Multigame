@@ -48,7 +48,7 @@ bool AppSelect::Init()
         return false;
     }
 
-    /*Keep the existing three apps in the first row and place Fight in the
+    /*Keep the existing three apps in the first row and place Zombie Land in the
       second row under Kids Fantasy, based on the current screen size.*/
     Button *firstRowButtons[] = { &m_buttonKidsFantasy, &m_buttonRoulette, &m_buttonParticleBuilder };
 
@@ -99,7 +99,7 @@ bool AppSelect::Init()
     /*Register Client Particle Builder*/
     RegisterClient(EApps::eParticleBuilder, &m_ParticleBuilder);
 
-    /*Register Client Fight*/
+    /*Register Client Zombie Land*/
     RegisterClient(EApps::eFight, &m_Fight);
 
     /*Initalize all the applications*/

@@ -59,7 +59,7 @@ private:
     /*Roulette Button*/
     Button m_buttonRoulette;
 
-    /*Fight Button*/
+    /*Zombie Land Button*/
     Button m_buttonFight;
 
     /*Kids Fantasy object*/
@@ -71,7 +71,7 @@ private:
     /*Roulette object;*/
     Roulette m_Roulette;
 
-    /*Fight object*/
+    /*Zombie Land object*/
     Fight m_Fight;
 
     /*Particle System Star Effect*/

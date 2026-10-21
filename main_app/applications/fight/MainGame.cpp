@@ -42,7 +42,7 @@ bool Fight::Init()
 
         if (!textureBackground || !textureBackground->Load())
         {
-            LOG_ERROR("Fight - Unable to load background layer \"{0}\" !", strPath);
+            LOG_ERROR("Zombie Land - Unable to load background layer \"{0}\" !", strPath);
             return false;
         }
 
@@ -53,7 +53,7 @@ bool Fight::Init()
 
     if (!m_textureSoldierShadow || !m_textureSoldierShadow->Load())
     {
-        LOG_ERROR("Fight - Unable to load soldier shadow !");
+        LOG_ERROR("Zombie Land - Unable to load soldier shadow !");
         return false;
     }
 
@@ -62,11 +62,11 @@ bool Fight::Init()
                                           g_unSoldierFrameHeight,
                                           g_fFpsSoldierIdle))
     {
-        LOG_ERROR("Fight - Unable to load soldier idle animation !");
+        LOG_ERROR("Zombie Land - Unable to load soldier idle animation !");
         return false;
     }
 
-    LOG_INFO("Fight - Initialized ...");
+    LOG_INFO("Zombie Land - Initialized ...");
     return true;
 }
 
@@ -80,7 +80,7 @@ bool Fight::Deinit()
         m_textureSoldierShadow.reset();
     }
 
-    LOG_WARN("Fight - Deinitialized ...");
+    LOG_WARN("Zombie Land - Deinitialized ...");
     return true;
 }
 
@@ -97,12 +97,12 @@ const std::string &Fight::GetAppName()
 
 void Fight::OnEnter()
 {
-    /*Fight only needs the Home button and the volume knob*/
+    /*Zombie Land only needs the Home button and the volume knob*/
     MainApp::GetInstance().ptrPanel->HideFields();
 
     m_animSoldierIdle.Start(g_fFpsSoldierIdle, EAnimPlayerPlayMode::ePlayLooped);
 
-    LOG_INFO("Fight - Transition to Application succeed");
+    LOG_INFO("Zombie Land - Transition to Application succeed");
 }
 
 void Fight::OnExit()
@@ -110,7 +110,7 @@ void Fight::OnExit()
     m_animSoldierIdle.Stop();
 
     MainApp::GetInstance().ptrPanel->ShowFields();
-    LOG_INFO("Fight - Exit from Application");
+    LOG_INFO("Zombie Land - Exit from Application");
 }
 
 void Fight::OnDraw()

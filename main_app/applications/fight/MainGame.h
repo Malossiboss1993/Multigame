@@ -12,7 +12,7 @@ class Fight : public IApp, public ITimer
 {
 
 private:
-    std::string m_strAppName = "Fight";
+    std::string m_strAppName = "Zombie Land";
 
     /*Textures background layers, drawn from back to front*/
     std::vector<std::shared_ptr<Texture>> m_vecTexturesBackground;
