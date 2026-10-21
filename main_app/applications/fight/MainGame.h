@@ -23,13 +23,19 @@ private:
     float m_fSoldierFeetY = 930.0f;
     bool m_bSoldierFacingRight = true;
     bool m_bSoldierMoving = false;
+    bool m_bSoldierShooting = false;
+    bool m_bSoldierContinuousShooting = false;
+    bool m_bShootKeyWasDown = false;
     AnimPlayer m_animSoldierIdle;
     AnimPlayer m_animSoldierWalk;
+    AnimPlayer m_animSoldierShot;
+    AnimPlayer m_animSoldierShotContinuous;
     std::shared_ptr<Texture> m_textureSoldierShadow;
 
     /*Horizontal world scroll, used for the parallax backgrounds*/
     float m_fWorldOffsetX = 0.0f;
 
+    void UpdateSoldierShooting();
     void UpdateSoldierMovement();
     void DrawBackgroundLayer(std::size_t unLayerIndex, float fScaleFactor);
     void DrawSoldier();

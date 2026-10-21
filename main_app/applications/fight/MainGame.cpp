@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 
 #include <main_app/MainApp.h>
 #include <main_app/renderer/Renderer.h>
@@ -11,8 +12,13 @@
 
 constexpr float g_fFpsSoldierIdle = 10.0f;
 constexpr float g_fFpsSoldierWalk = 10.0f;
+constexpr float g_fFpsSoldierShot = 12.0f;
+constexpr float g_fFpsSoldierShotContinuous = 24.0f;
 constexpr float g_fSoldierMoveSpeed = 300.0f;
 constexpr float g_fSoldierVerticalMoveSpeed = 200.0f;
+
+/*The soldier is rooted in place while firing, so he feels focused on shooting*/
+constexpr float g_fSoldierShootingMoveSpeedMultiplier = 0.0f;
 constexpr unsigned int g_unSoldierFrameWidth = 128;
 constexpr unsigned int g_unSoldierFrameHeight = 128;
 constexpr float g_fSoldierScale = 3.333333f;
@@ -102,6 +108,30 @@ bool Fight::Init()
         return false;
     }
 
+    if (!m_animSoldierShot.InitSpriteSheet("../src/resources/fight/soldier_1/Shot_1.png",
+                                          g_unSoldierFrameWidth,
+                                          g_unSoldierFrameHeight,
+                                          g_fFpsSoldierShot))
+    {
+        LOG_ERROR("Zombie Land - Unable to load soldier shot animation !");
+        return false;
+    }
+
+    if (!m_animSoldierShotContinuous.InitSpriteSheet("../src/resources/fight/soldier_1/Shot_2.png",
+                                                     g_unSoldierFrameWidth,
+                                                     g_unSoldierFrameHeight,
+                                                     g_fFpsSoldierShotContinuous))
+    {
+        LOG_ERROR("Zombie Land - Unable to load soldier continuous shot animation !");
+        return false;
+    }
+
+    std::function<void()> onShotEnd = [this]()
+    {
+        m_bSoldierShooting = false;
+    };
+    m_animSoldierShot.SetEndCallback(onShotEnd);
+
     LOG_INFO("Zombie Land - Initialized ...");
     return true;
 }
@@ -110,6 +140,8 @@ bool Fight::Deinit()
 {
     m_animSoldierIdle.Deinit();
     m_animSoldierWalk.Deinit();
+    m_animSoldierShot.Deinit();
+    m_animSoldierShotContinuous.Deinit();
 
     if (m_textureSoldierShadow)
     {
@@ -123,6 +155,7 @@ bool Fight::Deinit()
 
 bool Fight::HandleEvent()
 {
+    UpdateSoldierShooting();
     UpdateSoldierMovement();
 
     /*The panel remains active so the Home button can return to App Select*/
@@ -140,7 +173,12 @@ void Fight::OnEnter()
     MainApp::GetInstance().ptrPanel->HideFields();
 
     m_bSoldierMoving = false;
+    m_bSoldierShooting = false;
+    m_bSoldierContinuousShooting = false;
+    m_bShootKeyWasDown = false;
     m_animSoldierWalk.Stop();
+    m_animSoldierShot.Stop();
+    m_animSoldierShotContinuous.Stop();
     m_animSoldierIdle.Start(g_fFpsSoldierIdle, EAnimPlayerPlayMode::ePlayLooped);
 
     LOG_INFO("Zombie Land - Transition to Application succeed");
@@ -150,7 +188,12 @@ void Fight::OnExit()
 {
     m_animSoldierIdle.Stop();
     m_animSoldierWalk.Stop();
+    m_animSoldierShot.Stop();
+    m_animSoldierShotContinuous.Stop();
     m_bSoldierMoving = false;
+    m_bSoldierShooting = false;
+    m_bSoldierContinuousShooting = false;
+    m_bShootKeyWasDown = false;
 
     MainApp::GetInstance().ptrPanel->ShowFields();
     LOG_INFO("Zombie Land - Exit from Application");
@@ -247,6 +290,42 @@ void Fight::DrawSoldierShadow()
                             g_fSoldierShadowScale);
 }
 
+void Fight::UpdateSoldierShooting()
+{
+    const auto &rend = MainApp::GetInstance().ptrRend;
+    const bool bShootKeyDown =
+        glfwGetKey(rend->GetWindow(), GLFW_KEY_SPACE) == GLFW_PRESS;
+    const bool bShiftKeyDown =
+        glfwGetKey(rend->GetWindow(), GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+        glfwGetKey(rend->GetWindow(), GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+    const bool bContinuousShootRequested = bShootKeyDown && bShiftKeyDown;
+
+    /*Continuous fire lasts only while both Shift and Space are held*/
+    if (m_bSoldierContinuousShooting && !bContinuousShootRequested)
+    {
+        m_animSoldierShotContinuous.Stop();
+        m_bSoldierShooting = false;
+        m_bSoldierContinuousShooting = false;
+    }
+
+    if (bContinuousShootRequested && !m_bSoldierContinuousShooting)
+    {
+        /*Switch from the single shot to the looping Shot_2 burst*/
+        m_animSoldierShot.Stop();
+        m_bSoldierShooting = true;
+        m_bSoldierContinuousShooting = true;
+        m_animSoldierShotContinuous.Start(g_fFpsSoldierShotContinuous,
+                                          EAnimPlayerPlayMode::ePlayLooped);
+    }
+    else if (bShootKeyDown && !m_bShootKeyWasDown && !m_bSoldierShooting)
+    {
+        m_bSoldierShooting = true;
+        m_animSoldierShot.Start(g_fFpsSoldierShot, EAnimPlayerPlayMode::ePlayOnce);
+    }
+
+    m_bShootKeyWasDown = bShootKeyDown;
+}
+
 void Fight::UpdateSoldierMovement()
 {
     const auto &rend = MainApp::GetInstance().ptrRend;
@@ -274,11 +353,14 @@ void Fight::UpdateSoldierMovement()
         }
 
         const float fDeltaTimeSeconds = MainApp::GetInstance().GetDeltaTime() / 1000.0f;
+        const float fMoveSpeedMultiplier =
+            m_bSoldierShooting ? g_fSoldierShootingMoveSpeedMultiplier : 1.0f;
         const float fScreenWidth = static_cast<float>(rend->SCREEN_WIDTH);
 
         if (nDirection != 0)
         {
-            const float fMoveDistance = g_fSoldierMoveSpeed * fDeltaTimeSeconds;
+            const float fMoveDistance =
+                g_fSoldierMoveSpeed * fMoveSpeedMultiplier * fDeltaTimeSeconds;
             const float fForwardCameraAnchorX =
                 fScreenWidth * g_fForwardCameraAnchorScreenRatio;
             const float fBackwardCameraAnchorX =
@@ -317,7 +399,8 @@ void Fight::UpdateSoldierMovement()
         if (nVerticalDirection != 0)
         {
             m_fSoldierFeetY += static_cast<float>(nVerticalDirection) *
-                               g_fSoldierVerticalMoveSpeed * fDeltaTimeSeconds;
+                               g_fSoldierVerticalMoveSpeed * fMoveSpeedMultiplier *
+                               fDeltaTimeSeconds;
             m_fSoldierFeetY =
                 std::clamp(m_fSoldierFeetY, g_fSoldierMinFeetY, g_fSoldierMaxFeetY);
         }
@@ -340,7 +423,16 @@ void Fight::DrawSoldier()
     /*The shadow is drawn first, so the soldier stands on top of it*/
     DrawSoldierShadow();
 
-    if (m_bSoldierMoving)
+    if (m_bSoldierContinuousShooting)
+    {
+        m_animSoldierShotContinuous.Draw(fSoldierX, fSoldierY,
+                                         g_fSoldierScale, bFlipHorizontal);
+    }
+    else if (m_bSoldierShooting)
+    {
+        m_animSoldierShot.Draw(fSoldierX, fSoldierY, g_fSoldierScale, bFlipHorizontal);
+    }
+    else if (m_bSoldierMoving)
     {
         m_animSoldierWalk.Draw(fSoldierX, fSoldierY, g_fSoldierScale, bFlipHorizontal);
     }
