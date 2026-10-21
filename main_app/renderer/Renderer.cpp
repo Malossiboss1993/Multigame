@@ -474,7 +474,7 @@ void Renderer::DrawPicture(std::shared_ptr<Texture> ptrTexture, float fX, float 
 void Renderer::DrawPicturePart(std::shared_ptr<Texture> ptrTexture, float fX, float fY,
                                unsigned int unSourceX, unsigned int unSourceY,
                                unsigned int unSourceWidth, unsigned int unSourceHeight,
-                               float fScaleFactor)
+                               float fScaleFactor, bool bFlipHorizontal)
 {
     if (!ptrTexture || unSourceWidth == 0 || unSourceHeight == 0)
     {
@@ -504,7 +504,14 @@ void Renderer::DrawPicturePart(std::shared_ptr<Texture> ptrTexture, float fX, fl
     const float fTexCoordTop = 1.0f - static_cast<float>(unSourceY) / fTextureHeight;
     const float fTexCoordBottom = 1.0f - static_cast<float>(unSourceY + unSourceHeight) / fTextureHeight;
 
-    Set2DTextureCoords(fTexCoordLeft, fTexCoordBottom, fTexCoordRight, fTexCoordTop);
+    if (bFlipHorizontal)
+    {
+        Set2DTextureCoords(fTexCoordRight, fTexCoordBottom, fTexCoordLeft, fTexCoordTop);
+    }
+    else
+    {
+        Set2DTextureCoords(fTexCoordLeft, fTexCoordBottom, fTexCoordRight, fTexCoordTop);
+    }
 
     /*Create transformations*/
     glm::mat4 model         = glm::mat4(1.0f);

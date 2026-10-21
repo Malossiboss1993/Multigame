@@ -1,5 +1,6 @@
 #include "MainGame.h"
 
+#include <algorithm>
 #include <cstddef>
 
 #include <main_app/MainApp.h>
@@ -8,14 +9,15 @@
 #include <debug/Logger.h>
 
 constexpr float g_fFpsSoldierIdle = 10.0f;
+constexpr float g_fFpsSoldierWalk = 10.0f;
+constexpr float g_fSoldierMoveSpeed = 300.0f;
 constexpr unsigned int g_unSoldierFrameWidth = 128;
 constexpr unsigned int g_unSoldierFrameHeight = 128;
 constexpr float g_fSoldierScale = 3.333333f;
-constexpr float g_fSoldierFeetX = 650.0f;
 constexpr float g_fSoldierFeetY = 930.0f;
 constexpr float g_fSoldierShadowScale = 0.85f;
 
-/*Draw the soldier after the buildings and before the foreground cacti*/
+/*Draw the soldier behind the foreground cactus layer*/
 constexpr std::size_t g_unSoldierBackgroundLayerIndex = 4;
 
 Fight::Fight()
@@ -66,6 +68,15 @@ bool Fight::Init()
         return false;
     }
 
+    if (!m_animSoldierWalk.InitSpriteSheet("../src/resources/fight/soldier_1/Walk.png",
+                                          g_unSoldierFrameWidth,
+                                          g_unSoldierFrameHeight,
+                                          g_fFpsSoldierWalk))
+    {
+        LOG_ERROR("Zombie Land - Unable to load soldier walk animation !");
+        return false;
+    }
+
     LOG_INFO("Zombie Land - Initialized ...");
     return true;
 }
@@ -73,6 +84,7 @@ bool Fight::Init()
 bool Fight::Deinit()
 {
     m_animSoldierIdle.Deinit();
+    m_animSoldierWalk.Deinit();
 
     if (m_textureSoldierShadow)
     {
@@ -86,6 +98,8 @@ bool Fight::Deinit()
 
 bool Fight::HandleEvent()
 {
+    UpdateSoldierMovement();
+
     /*The panel remains active so the Home button can return to App Select*/
     return MainApp::GetInstance().ptrPanel->HandleEvent();
 }
@@ -100,6 +114,8 @@ void Fight::OnEnter()
     /*Zombie Land only needs the Home button and the volume knob*/
     MainApp::GetInstance().ptrPanel->HideFields();
 
+    m_bSoldierMoving = false;
+    m_animSoldierWalk.Stop();
     m_animSoldierIdle.Start(g_fFpsSoldierIdle, EAnimPlayerPlayMode::ePlayLooped);
 
     LOG_INFO("Zombie Land - Transition to Application succeed");
@@ -108,6 +124,8 @@ void Fight::OnEnter()
 void Fight::OnExit()
 {
     m_animSoldierIdle.Stop();
+    m_animSoldierWalk.Stop();
+    m_bSoldierMoving = false;
 
     MainApp::GetInstance().ptrPanel->ShowFields();
     LOG_INFO("Zombie Land - Exit from Application");
@@ -129,12 +147,12 @@ void Fight::OnDraw()
         m_vecTexturesBackground.size();
 
     /*Draw background layers from back to front, inserting the soldier
-      between the buildings and the foreground cacti*/
+      behind the foreground cacti*/
     for (std::size_t unLayerIndex = 0; unLayerIndex < m_vecTexturesBackground.size(); ++unLayerIndex)
     {
         if (unLayerIndex == unSoldierLayerIndex)
         {
-            DrawSoldierIdle();
+            DrawSoldier();
         }
 
         rend->DrawPictureScaled(m_vecTexturesBackground[unLayerIndex], 0.0f, 0.0f, fBackgroundScaleFactor);
@@ -142,7 +160,7 @@ void Fight::OnDraw()
 
     if (unSoldierLayerIndex >= m_vecTexturesBackground.size())
     {
-        DrawSoldierIdle();
+        DrawSoldier();
     }
 
     /*Draw Panel, including the Home button used to exit*/
@@ -163,21 +181,65 @@ void Fight::DrawSoldierShadow()
         static_cast<float>(m_textureSoldierShadow->GetHeight()) * g_fSoldierShadowScale;
 
     rend->DrawPictureScaled(m_textureSoldierShadow,
-                            g_fSoldierFeetX - fShadowWidth * 0.5f,
+                            m_fSoldierFeetX - fShadowWidth * 0.5f,
                             g_fSoldierFeetY - fShadowHeight * 0.5f,
                             g_fSoldierShadowScale);
 }
 
-void Fight::DrawSoldierIdle()
+void Fight::UpdateSoldierMovement()
+{
+    const auto &rend = MainApp::GetInstance().ptrRend;
+
+    const bool bMoveLeft = glfwGetKey(rend->GetWindow(), GLFW_KEY_LEFT) == GLFW_PRESS;
+    const bool bMoveRight = glfwGetKey(rend->GetWindow(), GLFW_KEY_RIGHT) == GLFW_PRESS;
+    const int nDirection = static_cast<int>(bMoveRight) - static_cast<int>(bMoveLeft);
+    const bool bMoving = nDirection != 0;
+
+    if (bMoving)
+    {
+        if (!m_bSoldierMoving)
+        {
+            m_animSoldierIdle.Stop();
+            m_animSoldierWalk.Start(g_fFpsSoldierWalk, EAnimPlayerPlayMode::ePlayLooped);
+            m_bSoldierMoving = true;
+        }
+
+        m_bSoldierFacingRight = nDirection > 0;
+
+        const float fDeltaTimeSeconds = MainApp::GetInstance().GetDeltaTime() / 1000.0f;
+        m_fSoldierFeetX += static_cast<float>(nDirection) * g_fSoldierMoveSpeed * fDeltaTimeSeconds;
+
+        const float fHalfSoldierWidth =
+            static_cast<float>(g_unSoldierFrameWidth) * g_fSoldierScale * 0.5f;
+        const float fMaxFeetX = static_cast<float>(rend->SCREEN_WIDTH) - fHalfSoldierWidth;
+        m_fSoldierFeetX = std::clamp(m_fSoldierFeetX, fHalfSoldierWidth, fMaxFeetX);
+    }
+    else if (m_bSoldierMoving)
+    {
+        m_animSoldierWalk.Stop();
+        m_animSoldierIdle.Start(g_fFpsSoldierIdle, EAnimPlayerPlayMode::ePlayLooped);
+        m_bSoldierMoving = false;
+    }
+}
+
+void Fight::DrawSoldier()
 {
     const float fFrameSize = static_cast<float>(g_unSoldierFrameWidth) * g_fSoldierScale;
+    const float fSoldierX = m_fSoldierFeetX - fFrameSize * 0.5f;
+    const float fSoldierY = g_fSoldierFeetY - fFrameSize;
+    const bool bFlipHorizontal = !m_bSoldierFacingRight;
 
     /*The shadow is drawn first, so the soldier stands on top of it*/
     DrawSoldierShadow();
 
-    m_animSoldierIdle.Draw(g_fSoldierFeetX - fFrameSize * 0.5f,
-                           g_fSoldierFeetY - fFrameSize,
-                           g_fSoldierScale);
+    if (m_bSoldierMoving)
+    {
+        m_animSoldierWalk.Draw(fSoldierX, fSoldierY, g_fSoldierScale, bFlipHorizontal);
+    }
+    else
+    {
+        m_animSoldierIdle.Draw(fSoldierX, fSoldierY, g_fSoldierScale, bFlipHorizontal);
+    }
 }
 
 void Fight::OnTick(unsigned int unID, unsigned int unTimes)

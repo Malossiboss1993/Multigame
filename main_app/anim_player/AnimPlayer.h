@@ -72,7 +72,7 @@ public:
     bool Deinit();
     void Start(float fFps = 25.0f, EAnimPlayerPlayMode ePlayMode = EAnimPlayerPlayMode::ePlayLooped);
     void Stop();
-    void Draw(float fX, float fY, float fScaleFactor = 1.0f);
+    void Draw(float fX, float fY, float fScaleFactor = 1.0f, bool bFlipHorizontal = false);
     void OnTick(unsigned int unID, unsigned int unTimes) final;
     void SetFrameCallback(std::function<void(unsigned int unCurrentFrame)>& frameCallback);
     void SetEndCallback(std::function<void()>& endCallback);

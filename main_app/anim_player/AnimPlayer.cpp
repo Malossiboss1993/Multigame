@@ -259,7 +259,7 @@ void AnimPlayer::Stop()
     MainApp::GetInstance().ptrTimer->StopTimer(this, g_unTimerProcessAnimPlayer);
 }
 
-void AnimPlayer::Draw(float fX, float fY, float fScaleFactor)
+void AnimPlayer::Draw(float fX, float fY, float fScaleFactor, bool bFlipHorizontal)
 {
     if (m_eState == EAnimPlayerStates::eInactive)
     {
@@ -283,7 +283,7 @@ void AnimPlayer::Draw(float fX, float fY, float fScaleFactor)
         rend->DrawPicturePart(m_textureSpriteSheet, fX, fY,
                               unFrameX, unFrameY,
                               m_unFrameWidth, m_unFrameHeight,
-                              fScaleFactor);
+                              fScaleFactor, bFlipHorizontal);
         return;
     }
 

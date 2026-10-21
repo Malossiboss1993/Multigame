@@ -17,12 +17,17 @@ private:
     /*Textures background layers, drawn from back to front*/
     std::vector<std::shared_ptr<Texture>> m_vecTexturesBackground;
 
-    /*Soldier animations*/
+    /*Soldier movement and animations*/
+    float m_fSoldierFeetX = 650.0f;
+    bool m_bSoldierFacingRight = true;
+    bool m_bSoldierMoving = false;
     AnimPlayer m_animSoldierIdle;
+    AnimPlayer m_animSoldierWalk;
     std::shared_ptr<Texture> m_textureSoldierShadow;
 
+    void UpdateSoldierMovement();
+    void DrawSoldier();
     void DrawSoldierShadow();
-    void DrawSoldierIdle();
 
 public:
     Fight();

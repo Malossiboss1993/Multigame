@@ -106,7 +106,7 @@ public:
     void DrawPicturePart(std::shared_ptr<Texture> ptrTexture, float fX, float fY,
                          unsigned int unSourceX, unsigned int unSourceY,
                          unsigned int unSourceWidth, unsigned int unSourceHeight,
-                         float fScaleFactor = 1.0f);
+                         float fScaleFactor = 1.0f, bool bFlipHorizontal = false);
     void DrawPictureRotated(std::shared_ptr<Texture> ptrTexture, float fX, float fY, float fDegrees, float fScaleFactor = 1.0f);
     void DrawPictureAroundPoint(std::shared_ptr<Texture> ptrTexture, float fX, float fY, float fDegrees, float fVertPivotFromCenter);
 
