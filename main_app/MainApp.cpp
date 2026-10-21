@@ -86,6 +86,31 @@ void MainApp::Run()
         /*Delta Time Measure*/
         m_frameBeginTime = std::chrono::system_clock::now();
 
+        /*Toggle fullscreen with F11*/
+        const bool bFullscreenKeyPressed =
+            glfwGetKey(ptrRend->GetWindow(), GLFW_KEY_F11) == GLFW_PRESS;
+
+        if (bFullscreenKeyPressed && !m_bFullscreenKeyPressed)
+        {
+            ptrRend->ToggleFullscreen();
+        }
+
+        m_bFullscreenKeyPressed = bFullscreenKeyPressed;
+
+        /*Keep ImGui in the same logical coordinate space as the game. The
+          renderer scales the fixed-resolution scene to the window and
+          letterboxes it when necessary.*/
+        float fLogicalOffsetX = 0.0f;
+        float fLogicalOffsetY = 0.0f;
+        float fLogicalScale = 1.0f;
+        ptrRend->GetWindowToLogicalTransform(fLogicalOffsetX, fLogicalOffsetY, fLogicalScale);
+
+        ImGui_ImplGlfwGL3_SetDisplayTransform(static_cast<float>(ptrRend->SCREEN_WIDTH),
+                                              static_cast<float>(ptrRend->SCREEN_HEIGHT),
+                                              fLogicalOffsetX,
+                                              fLogicalOffsetY,
+                                              fLogicalScale);
+
         /* Debug New frame calculation */
         ImGui_ImplGlfwGL3_NewFrame();
 
@@ -95,9 +120,8 @@ void MainApp::Run()
         /*Process Timing*/
         ptrTimer->Process();
 
-        /* Clear Color */
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        /*Render the scene into the fixed-resolution framebuffer*/
+        ptrRend->BeginFrame();
 
         /*Main Draw*/
         ptrAppSelect->OnDraw();
@@ -112,6 +136,9 @@ void MainApp::Run()
         /*Draw Imgui*/
         ImGui::Render();
         ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
+
+        /*Scale the fixed-resolution frame to the window and draw the bars*/
+        ptrRend->EndFrame();
 
         /* SwapBuffers */
         ptrRend->CallEventsAndSwapBuffers();

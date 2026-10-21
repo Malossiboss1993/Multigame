@@ -2,6 +2,8 @@
 #include <debug/Logger.h>
 #include <main_app/MainApp.h>
 
+#include <algorithm>
+
 /** GLFW callbacks */
 void framebuffer_size_callback(GLFWwindow* ptrWindow, int nWidth, int nHeight)
 {
@@ -47,7 +49,7 @@ bool Renderer::InitSystem(const std::string& strTitle,
     SCREEN_HEIGHT = nScreenHeight;
     SCREEN_DEPTH = nScreenDepth;
 
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     window = glfwCreateWindow(SCREEN_WIDTH, SCREEN_HEIGHT, strTitle.c_str(), NULL, NULL);
 
     if(window == nullptr)
@@ -95,6 +97,18 @@ Renderer::~Renderer()
      * has been destroyed. Those destructors run while this context is still
      * valid, because this destructor runs last. Terminating it earlier would
      * make their OpenGL calls fail or crash. */
+    if (m_unFramebuffer != 0)
+    {
+        glDeleteFramebuffers(1, &m_unFramebuffer);
+        m_unFramebuffer = 0;
+    }
+
+    if (m_unFramebufferTexture != 0)
+    {
+        glDeleteTextures(1, &m_unFramebufferTexture);
+        m_unFramebufferTexture = 0;
+    }
+
     if (window != nullptr)
     {
         glfwDestroyWindow(window);
@@ -160,6 +174,45 @@ void Renderer::CreateAndFill2DBuffers()
     
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+    CreateRenderTarget();
+}
+
+void Renderer::CreateRenderTarget()
+{
+    glGenFramebuffers(1, &m_unFramebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_unFramebuffer);
+
+    glGenTextures(1, &m_unFramebufferTexture);
+    glBindTexture(GL_TEXTURE_2D, m_unFramebufferTexture);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGBA8,
+                 static_cast<GLsizei>(SCREEN_WIDTH),
+                 static_cast<GLsizei>(SCREEN_HEIGHT),
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 nullptr);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER,
+                           GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D,
+                           m_unFramebufferTexture,
+                           0);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        LOG_ERROR("Renderer - Unable to create the fixed-resolution framebuffer !");
+    }
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void Renderer::CreateAndFill3DBuffers()
@@ -555,6 +608,125 @@ void Renderer::DrawPictureAroundPoint(std::shared_ptr<Texture> ptrTexture, float
 void Renderer::Send2DGeometry(std::shared_ptr<Texture> ptrTexture)
 {
 
+}
+
+void Renderer::BeginFrame()
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, m_unFramebuffer);
+    glViewport(0, 0, static_cast<GLsizei>(SCREEN_WIDTH), static_cast<GLsizei>(SCREEN_HEIGHT));
+    glDisable(GL_SCISSOR_TEST);
+
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void Renderer::EndFrame()
+{
+    int nFramebufferWidth = 0;
+    int nFramebufferHeight = 0;
+    glfwGetFramebufferSize(window, &nFramebufferWidth, &nFramebufferHeight);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, nFramebufferWidth, nFramebufferHeight);
+    glDisable(GL_SCISSOR_TEST);
+
+    /*Black bars around the game when the window aspect ratio is not 16:9*/
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    if (nFramebufferWidth <= 0 || nFramebufferHeight <= 0)
+    {
+        return;
+    }
+
+    const float fScale = std::min(static_cast<float>(nFramebufferWidth) / static_cast<float>(SCREEN_WIDTH),
+                                  static_cast<float>(nFramebufferHeight) / static_cast<float>(SCREEN_HEIGHT));
+
+    const int nDestinationWidth = std::max(1, static_cast<int>(static_cast<float>(SCREEN_WIDTH) * fScale));
+    const int nDestinationHeight = std::max(1, static_cast<int>(static_cast<float>(SCREEN_HEIGHT) * fScale));
+    const int nDestinationX = (nFramebufferWidth - nDestinationWidth) / 2;
+    const int nDestinationY = (nFramebufferHeight - nDestinationHeight) / 2;
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_unFramebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0,
+                      0,
+                      static_cast<GLint>(SCREEN_WIDTH),
+                      static_cast<GLint>(SCREEN_HEIGHT),
+                      nDestinationX,
+                      nDestinationY,
+                      nDestinationX + nDestinationWidth,
+                      nDestinationY + nDestinationHeight,
+                      GL_COLOR_BUFFER_BIT,
+                      GL_LINEAR);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::GetWindowToLogicalTransform(float &fOffsetX, float &fOffsetY, float &fScale) const
+{
+    int nWindowWidth = 0;
+    int nWindowHeight = 0;
+    glfwGetWindowSize(window, &nWindowWidth, &nWindowHeight);
+
+    if (nWindowWidth <= 0 || nWindowHeight <= 0)
+    {
+        fOffsetX = 0.0f;
+        fOffsetY = 0.0f;
+        fScale = 1.0f;
+        return;
+    }
+
+    fScale = std::min(static_cast<float>(nWindowWidth) / static_cast<float>(SCREEN_WIDTH),
+                      static_cast<float>(nWindowHeight) / static_cast<float>(SCREEN_HEIGHT));
+
+    const float fViewportWidth = static_cast<float>(SCREEN_WIDTH) * fScale;
+    const float fViewportHeight = static_cast<float>(SCREEN_HEIGHT) * fScale;
+
+    fOffsetX = (static_cast<float>(nWindowWidth) - fViewportWidth) / 2.0f;
+    fOffsetY = (static_cast<float>(nWindowHeight) - fViewportHeight) / 2.0f;
+}
+
+void Renderer::ToggleFullscreen()
+{
+    if (window == nullptr)
+    {
+        return;
+    }
+
+    if (glfwGetWindowMonitor(window) != nullptr)
+    {
+        glfwSetWindowMonitor(window,
+                             nullptr,
+                             m_nWindowedX,
+                             m_nWindowedY,
+                             m_nWindowedWidth,
+                             m_nWindowedHeight,
+                             0);
+        return;
+    }
+
+    glfwGetWindowPos(window, &m_nWindowedX, &m_nWindowedY);
+    glfwGetWindowSize(window, &m_nWindowedWidth, &m_nWindowedHeight);
+
+    GLFWmonitor *ptrMonitor = glfwGetPrimaryMonitor();
+    if (ptrMonitor == nullptr)
+    {
+        return;
+    }
+
+    const GLFWvidmode *ptrVideoMode = glfwGetVideoMode(ptrMonitor);
+    if (ptrVideoMode == nullptr)
+    {
+        return;
+    }
+
+    glfwSetWindowMonitor(window,
+                         ptrMonitor,
+                         0,
+                         0,
+                         ptrVideoMode->width,
+                         ptrVideoMode->height,
+                         ptrVideoMode->refreshRate);
 }
 
 void Renderer::CallEventsAndSwapBuffers()

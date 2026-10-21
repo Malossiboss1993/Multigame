@@ -27,6 +27,19 @@ private:
     GLuint VBOFont;
     GLuint VAOFont;
 
+    /*Fixed-resolution render target. The scene is rendered at the design
+      resolution and then scaled to the window, preserving the aspect ratio.*/
+    GLuint m_unFramebuffer = 0;
+    GLuint m_unFramebufferTexture = 0;
+
+    /*Windowed placement saved while switching to/from fullscreen*/
+    int m_nWindowedX = 0;
+    int m_nWindowedY = 0;
+    int m_nWindowedWidth = 1920;
+    int m_nWindowedHeight = 1080;
+
+    void CreateRenderTarget();
+
     /* TOP LEFT->  *---------------------------------* <-TOP RIGHT
                    |                                 |
                    |                                 |
@@ -72,7 +85,11 @@ public:
     void Deinit();
     void CreateAndFill2DBuffers();
     void CreateAndFill3DBuffers();
+    void BeginFrame();
+    void EndFrame();
     void CallEventsAndSwapBuffers();
+    void GetWindowToLogicalTransform(float &fOffsetX, float &fOffsetY, float &fScale) const;
+    void ToggleFullscreen();
 
     void UseShaderPicture();
     void UseShaderCrop(glm::vec4 vec4RectCrop);

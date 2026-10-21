@@ -19,6 +19,7 @@ class MainApp
 private:
 
     bool m_bShowImguiHelp = true;
+    bool m_bFullscreenKeyPressed = false;
 
     /*Delta Time measure*/
     std::chrono::time_point<std::chrono::system_clock> m_frameBeginTime;

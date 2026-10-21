@@ -56,6 +56,17 @@ static double       g_Time = 0.0f;
 static bool         g_MouseJustPressed[3] = { false, false, false };
 static GLFWcursor*  g_MouseCursors[ImGuiMouseCursor_COUNT] = { 0 };
 
+// Optional logical display transform. The application renders the game and
+// ImGui into a fixed-resolution framebuffer, then scales that framebuffer to
+// the window. This keeps ImGui coordinates and mouse input in the same space
+// as the game, independent of the actual window size.
+static bool         g_bLogicalDisplay = false;
+static float        g_fLogicalDisplayWidth = 0.0f;
+static float        g_fLogicalDisplayHeight = 0.0f;
+static float        g_fLogicalDisplayOffsetX = 0.0f;
+static float        g_fLogicalDisplayOffsetY = 0.0f;
+static float        g_fLogicalDisplayScale = 1.0f;
+
 // OpenGL3 data
 static char         g_GlslVersion[32] = "#version 150";
 static GLuint       g_FontTexture = 0;
@@ -428,6 +439,23 @@ void ImGui_ImplGlfwGL3_Shutdown()
     ImGui_ImplGlfwGL3_InvalidateDeviceObjects();
 }
 
+void ImGui_ImplGlfwGL3_SetDisplayTransform(float fDisplayWidth, float fDisplayHeight,
+                                           float fOffsetX, float fOffsetY, float fScale)
+{
+    if (fDisplayWidth <= 0.0f || fDisplayHeight <= 0.0f || fScale <= 0.0f)
+    {
+        g_bLogicalDisplay = false;
+        return;
+    }
+
+    g_bLogicalDisplay = true;
+    g_fLogicalDisplayWidth = fDisplayWidth;
+    g_fLogicalDisplayHeight = fDisplayHeight;
+    g_fLogicalDisplayOffsetX = fOffsetX;
+    g_fLogicalDisplayOffsetY = fOffsetY;
+    g_fLogicalDisplayScale = fScale;
+}
+
 void ImGui_ImplGlfwGL3_NewFrame()
 {
     if (!g_FontTexture)
@@ -440,8 +468,17 @@ void ImGui_ImplGlfwGL3_NewFrame()
     int display_w, display_h;
     glfwGetWindowSize(g_Window, &w, &h);
     glfwGetFramebufferSize(g_Window, &display_w, &display_h);
-    io.DisplaySize = ImVec2((float)w, (float)h);
-    io.DisplayFramebufferScale = ImVec2(w > 0 ? ((float)display_w / w) : 0, h > 0 ? ((float)display_h / h) : 0);
+
+    if (g_bLogicalDisplay)
+    {
+        io.DisplaySize = ImVec2(g_fLogicalDisplayWidth, g_fLogicalDisplayHeight);
+        io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+    }
+    else
+    {
+        io.DisplaySize = ImVec2((float)w, (float)h);
+        io.DisplayFramebufferScale = ImVec2(w > 0 ? ((float)display_w / w) : 0, h > 0 ? ((float)display_h / h) : 0);
+    }
 
     // Setup time step
     double current_time =  glfwGetTime();
@@ -455,13 +492,31 @@ void ImGui_ImplGlfwGL3_NewFrame()
         // Set OS mouse position if requested (only used when ImGuiConfigFlags_NavEnableSetMousePos is enabled by user)
         if (io.WantSetMousePos)
         {
-            glfwSetCursorPos(g_Window, (double)io.MousePos.x, (double)io.MousePos.y);
+            if (g_bLogicalDisplay)
+            {
+                glfwSetCursorPos(g_Window,
+                                 (double)(io.MousePos.x * g_fLogicalDisplayScale + g_fLogicalDisplayOffsetX),
+                                 (double)(io.MousePos.y * g_fLogicalDisplayScale + g_fLogicalDisplayOffsetY));
+            }
+            else
+            {
+                glfwSetCursorPos(g_Window, (double)io.MousePos.x, (double)io.MousePos.y);
+            }
         }
         else
         {
             double mouse_x, mouse_y;
             glfwGetCursorPos(g_Window, &mouse_x, &mouse_y);
-            io.MousePos = ImVec2((float)mouse_x, (float)mouse_y);
+
+            if (g_bLogicalDisplay)
+            {
+                io.MousePos = ImVec2((float)((mouse_x - g_fLogicalDisplayOffsetX) / g_fLogicalDisplayScale),
+                                     (float)((mouse_y - g_fLogicalDisplayOffsetY) / g_fLogicalDisplayScale));
+            }
+            else
+            {
+                io.MousePos = ImVec2((float)mouse_x, (float)mouse_y);
+            }
         }
     }
     else
