@@ -471,6 +471,85 @@ void Renderer::DrawPicture(std::shared_ptr<Texture> ptrTexture, float fX, float 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
 
+void Renderer::DrawPicturePart(std::shared_ptr<Texture> ptrTexture, float fX, float fY,
+                               unsigned int unSourceX, unsigned int unSourceY,
+                               unsigned int unSourceWidth, unsigned int unSourceHeight,
+                               float fScaleFactor)
+{
+    if (!ptrTexture || unSourceWidth == 0 || unSourceHeight == 0)
+    {
+        return;
+    }
+
+    const unsigned int unTextureWidth = static_cast<unsigned int>(ptrTexture->GetWidth());
+    const unsigned int unTextureHeight = static_cast<unsigned int>(ptrTexture->GetHeight());
+
+    if (unSourceX + unSourceWidth > unTextureWidth ||
+        unSourceY + unSourceHeight > unTextureHeight)
+    {
+        LOG_ERROR("Renderer - Source rectangle is outside texture \"{0}\" !", ptrTexture->GetPath());
+        return;
+    }
+
+    /*Bind VertexArrayObject, texture and shader to use*/
+    glBindVertexArray(VAO2D);
+    ptrTexture->Bind();
+    m_currentPictureShader.use();
+
+    /*Calculate the texture coordinates of the requested part*/
+    const float fTextureWidth = static_cast<float>(unTextureWidth);
+    const float fTextureHeight = static_cast<float>(unTextureHeight);
+    const float fTexCoordLeft = static_cast<float>(unSourceX) / fTextureWidth;
+    const float fTexCoordRight = static_cast<float>(unSourceX + unSourceWidth) / fTextureWidth;
+    const float fTexCoordTop = 1.0f - static_cast<float>(unSourceY) / fTextureHeight;
+    const float fTexCoordBottom = 1.0f - static_cast<float>(unSourceY + unSourceHeight) / fTextureHeight;
+
+    Set2DTextureCoords(fTexCoordLeft, fTexCoordBottom, fTexCoordRight, fTexCoordTop);
+
+    /*Create transformations*/
+    glm::mat4 model         = glm::mat4(1.0f);
+    glm::mat4 view          = glm::mat4(1.0f);
+    glm::mat4 projection    = glm::mat4(1.0f);
+    glm::mat4 projectionToPush = glm::mat4(1.0f);
+
+    /*Transformations of Model*/
+    model = glm::translate(model, glm::vec3(fX, fY, 0.0f));
+    model = glm::scale(model, glm::vec3(fScaleFactor * (static_cast<float>(unSourceWidth) / static_cast<float>(SCREEN_WIDTH)),
+                                        fScaleFactor * (static_cast<float>(unSourceHeight) / static_cast<float>(SCREEN_HEIGHT))
+                                        , 0.0f));
+
+    /*Transformations of Projection, in this case is Orthographic projection*/
+    projection = glm::ortho(0.0f, (float)SCREEN_WIDTH, (float)SCREEN_HEIGHT, 0.0f, -1.0f, 1.0f);
+
+    /*The current matrix projeciton will be pushed in the vertex shader*/
+    projectionToPush = projection * view * model;
+
+    m_currentPictureShader.setMat4("uProjection", projectionToPush);
+    m_currentPictureShader.setVec4("vColor", m_vColor);
+
+    /*Current draw call*/
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    /*Restore the texture coordinates for the next full-texture draw*/
+    Set2DTextureCoords(0.0f, 0.0f, 1.0f, 1.0f);
+}
+
+void Renderer::Set2DTextureCoords(float fTexCoordLeft, float fTexCoordBottom,
+                                  float fTexCoordRight, float fTexCoordTop)
+{
+    float fVertices2D[] =
+    {
+    /*Top Left*/ 0.0f, 0.0f,                                   fTexCoordLeft, fTexCoordTop,
+   /*Top Right*/(float)SCREEN_WIDTH, 0.0f,                    fTexCoordRight, fTexCoordTop,
+/*Bottom Right*/(float)SCREEN_WIDTH, (float)SCREEN_HEIGHT, fTexCoordRight, fTexCoordBottom,
+  /*Bottom Left*/0.0f, (float)SCREEN_HEIGHT,                fTexCoordLeft, fTexCoordBottom,
+    };
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO2D);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(fVertices2D), fVertices2D);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
 void Renderer::DrawPicture3D(std::shared_ptr<Texture> ptrTexture, Shader &shaderTexture, glm::mat4& matrixModel, glm::mat4& matrixView)
 {
     /*Bind VertexArrayObject, texture and shader to use*/

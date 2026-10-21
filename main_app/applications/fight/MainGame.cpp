@@ -1,9 +1,22 @@
 #include "MainGame.h"
 
+#include <cstddef>
+
 #include <main_app/MainApp.h>
 #include <main_app/renderer/Renderer.h>
 #include <main_app/panel/Panel.h>
 #include <debug/Logger.h>
+
+constexpr float g_fFpsSoldierIdle = 10.0f;
+constexpr unsigned int g_unSoldierFrameWidth = 128;
+constexpr unsigned int g_unSoldierFrameHeight = 128;
+constexpr float g_fSoldierScale = 3.333333f;
+constexpr float g_fSoldierFeetX = 650.0f;
+constexpr float g_fSoldierFeetY = 930.0f;
+constexpr float g_fSoldierShadowScale = 0.85f;
+
+/*Draw the soldier after the buildings and before the foreground cacti*/
+constexpr std::size_t g_unSoldierBackgroundLayerIndex = 4;
 
 Fight::Fight()
 {
@@ -36,12 +49,37 @@ bool Fight::Init()
         m_vecTexturesBackground.emplace_back(textureBackground);
     }
 
+    m_textureSoldierShadow = Texture::CreateTexture("../src/resources/fight/soldier_1/shadow.png");
+
+    if (!m_textureSoldierShadow || !m_textureSoldierShadow->Load())
+    {
+        LOG_ERROR("Fight - Unable to load soldier shadow !");
+        return false;
+    }
+
+    if (!m_animSoldierIdle.InitSpriteSheet("../src/resources/fight/soldier_1/Idle.png",
+                                          g_unSoldierFrameWidth,
+                                          g_unSoldierFrameHeight,
+                                          g_fFpsSoldierIdle))
+    {
+        LOG_ERROR("Fight - Unable to load soldier idle animation !");
+        return false;
+    }
+
     LOG_INFO("Fight - Initialized ...");
     return true;
 }
 
 bool Fight::Deinit()
 {
+    m_animSoldierIdle.Deinit();
+
+    if (m_textureSoldierShadow)
+    {
+        m_textureSoldierShadow->DeleteTexture();
+        m_textureSoldierShadow.reset();
+    }
+
     LOG_WARN("Fight - Deinitialized ...");
     return true;
 }
@@ -61,11 +99,16 @@ void Fight::OnEnter()
 {
     /*Fight only needs the Home button and the volume knob*/
     MainApp::GetInstance().ptrPanel->HideFields();
+
+    m_animSoldierIdle.Start(g_fFpsSoldierIdle, EAnimPlayerPlayMode::ePlayLooped);
+
     LOG_INFO("Fight - Transition to Application succeed");
 }
 
 void Fight::OnExit()
 {
+    m_animSoldierIdle.Stop();
+
     MainApp::GetInstance().ptrPanel->ShowFields();
     LOG_INFO("Fight - Exit from Application");
 }
@@ -74,21 +117,67 @@ void Fight::OnDraw()
 {
     const auto &rend = MainApp::GetInstance().ptrRend;
 
-    /*Draw background layers from back to front*/
-    if (!m_vecTexturesBackground.empty())
-    {
-        const float fScaleFactor =
-            static_cast<float>(rend->SCREEN_WIDTH) /
+    const float fBackgroundScaleFactor =
+        m_vecTexturesBackground.empty() ?
+        1.0f :
+        static_cast<float>(rend->SCREEN_WIDTH) /
             static_cast<float>(m_vecTexturesBackground.front()->GetWidth());
 
-        for (const auto &textureBackground : m_vecTexturesBackground)
+    const std::size_t unSoldierLayerIndex =
+        m_vecTexturesBackground.size() > g_unSoldierBackgroundLayerIndex ?
+        g_unSoldierBackgroundLayerIndex :
+        m_vecTexturesBackground.size();
+
+    /*Draw background layers from back to front, inserting the soldier
+      between the buildings and the foreground cacti*/
+    for (std::size_t unLayerIndex = 0; unLayerIndex < m_vecTexturesBackground.size(); ++unLayerIndex)
+    {
+        if (unLayerIndex == unSoldierLayerIndex)
         {
-            rend->DrawPictureScaled(textureBackground, 0.0f, 0.0f, fScaleFactor);
+            DrawSoldierIdle();
         }
+
+        rend->DrawPictureScaled(m_vecTexturesBackground[unLayerIndex], 0.0f, 0.0f, fBackgroundScaleFactor);
+    }
+
+    if (unSoldierLayerIndex >= m_vecTexturesBackground.size())
+    {
+        DrawSoldierIdle();
     }
 
     /*Draw Panel, including the Home button used to exit*/
     MainApp::GetInstance().ptrPanel->OnDraw();
+}
+
+void Fight::DrawSoldierShadow()
+{
+    if (!m_textureSoldierShadow)
+    {
+        return;
+    }
+
+    const auto &rend = MainApp::GetInstance().ptrRend;
+    const float fShadowWidth =
+        static_cast<float>(m_textureSoldierShadow->GetWidth()) * g_fSoldierShadowScale;
+    const float fShadowHeight =
+        static_cast<float>(m_textureSoldierShadow->GetHeight()) * g_fSoldierShadowScale;
+
+    rend->DrawPictureScaled(m_textureSoldierShadow,
+                            g_fSoldierFeetX - fShadowWidth * 0.5f,
+                            g_fSoldierFeetY - fShadowHeight * 0.5f,
+                            g_fSoldierShadowScale);
+}
+
+void Fight::DrawSoldierIdle()
+{
+    const float fFrameSize = static_cast<float>(g_unSoldierFrameWidth) * g_fSoldierScale;
+
+    /*The shadow is drawn first, so the soldier stands on top of it*/
+    DrawSoldierShadow();
+
+    m_animSoldierIdle.Draw(g_fSoldierFeetX - fFrameSize * 0.5f,
+                           g_fSoldierFeetY - fFrameSize,
+                           g_fSoldierScale);
 }
 
 void Fight::OnTick(unsigned int unID, unsigned int unTimes)

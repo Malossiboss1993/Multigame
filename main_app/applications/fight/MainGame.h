@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <main_app/applications/IApp.h>
+#include <main_app/anim_player/AnimPlayer.h>
 #include <main_app/texture/Texture.h>
 #include <main_app/timer/TimerMgr.h>
 
@@ -15,6 +16,13 @@ private:
 
     /*Textures background layers, drawn from back to front*/
     std::vector<std::shared_ptr<Texture>> m_vecTexturesBackground;
+
+    /*Soldier animations*/
+    AnimPlayer m_animSoldierIdle;
+    std::shared_ptr<Texture> m_textureSoldierShadow;
+
+    void DrawSoldierShadow();
+    void DrawSoldierIdle();
 
 public:
     Fight();

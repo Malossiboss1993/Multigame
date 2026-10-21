@@ -103,6 +103,10 @@ public:
     void DrawText(std::string strText, std::shared_ptr<Font> ptrFont, float fX, float fY, float fScaleFactor = 1.0f);
     void DrawPicture(std::shared_ptr<Texture> ptrTexture, float fX, float fY);
     void DrawPictureScaled(std::shared_ptr<Texture> ptrTexture, float fX, float fY, float fScaleFactor);
+    void DrawPicturePart(std::shared_ptr<Texture> ptrTexture, float fX, float fY,
+                         unsigned int unSourceX, unsigned int unSourceY,
+                         unsigned int unSourceWidth, unsigned int unSourceHeight,
+                         float fScaleFactor = 1.0f);
     void DrawPictureRotated(std::shared_ptr<Texture> ptrTexture, float fX, float fY, float fDegrees, float fScaleFactor = 1.0f);
     void DrawPictureAroundPoint(std::shared_ptr<Texture> ptrTexture, float fX, float fY, float fDegrees, float fVertPivotFromCenter);
 
@@ -113,5 +117,7 @@ public:
 private:
 
     void Send2DGeometry(std::shared_ptr<Texture> ptrTexture);
+    void Set2DTextureCoords(float fTexCoordLeft, float fTexCoordBottom,
+                            float fTexCoordRight, float fTexCoordTop);
 
 };
