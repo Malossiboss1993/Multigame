@@ -3,7 +3,7 @@
 #include <main_app/applications/IApp.h>
 #include <main_app/texture/Texture.h>
 #include <main_app/button/Button.h>
-#include <main_app/applications/fight/MainGame.h>
+#include <main_app/applications/zombie_land/MainGame.h>
 #include <main_app/applications/kids_fantasy/MainGame.h>
 #include <main_app/applications/particle_builder/MainGame.h>
 #include <main_app/applications/roulette/MainGame.h>

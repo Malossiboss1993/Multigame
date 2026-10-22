@@ -26,7 +26,7 @@ bool AppSelect::Init()
 
     m_buttonRoulette.textureButton = Texture::CreateTexture("../src/resources/roulette/roulette_button.png");
 
-    m_buttonFight.textureButton = Texture::CreateTexture("../src/resources/fight/fight_button.png");
+    m_buttonFight.textureButton = Texture::CreateTexture("../src/resources/zombie_land/zombie_land_button.png");
 
     if (!m_textureBackground ||
         !m_buttonParticleBuilder.textureButton ||

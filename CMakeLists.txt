@@ -73,8 +73,8 @@ file(GLOB SOURCES
     main_app/applications/kids_fantasy/status_line/*.cpp
     main_app/applications/particle_builder/*.h
     main_app/applications/particle_builder/*.cpp
-    main_app/applications/fight/*.h
-    main_app/applications/fight/*.cpp
+    main_app/applications/zombie_land/*.h
+    main_app/applications/zombie_land/*.cpp
     main_app/button/*.h
     main_app/button/*.cpp
     main_app/font/*.h
@@ -114,7 +114,7 @@ set(INTERNAL_DIRS
     ${MULTIGAME_ROOT_DIR}/main_app/applications
     ${MULTIGAME_ROOT_DIR}/main_app/applications/kids_fantasy
     ${MULTIGAME_ROOT_DIR}/main_app/applications/roulette
-    ${MULTIGAME_ROOT_DIR}/main_app/applications/fight
+    ${MULTIGAME_ROOT_DIR}/main_app/applications/zombie_land
     ${MULTIGAME_ROOT_DIR}/main_app/button
     ${MULTIGAME_ROOT_DIR}/main_app/font
     ${MULTIGAME_ROOT_DIR}/main_app/interpolator

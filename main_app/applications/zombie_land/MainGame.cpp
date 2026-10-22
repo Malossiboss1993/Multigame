@@ -57,11 +57,11 @@ bool Fight::Init()
     /*Load background layers in drawing order: 1 (back) to 5 (front)*/
     const std::vector<std::string> vecBackgroundPaths =
     {
-        "../src/resources/fight/background_1/1.png",
-        "../src/resources/fight/background_1/2.png",
-        "../src/resources/fight/background_1/3.png",
-        "../src/resources/fight/background_1/4.png",
-        "../src/resources/fight/background_1/5.png"
+        "../src/resources/zombie_land/background_1/1.png",
+        "../src/resources/zombie_land/background_1/2.png",
+        "../src/resources/zombie_land/background_1/3.png",
+        "../src/resources/zombie_land/background_1/4.png",
+        "../src/resources/zombie_land/background_1/5.png"
     };
 
     m_vecTexturesBackground.reserve(vecBackgroundPaths.size());
@@ -82,7 +82,7 @@ bool Fight::Init()
         m_vecTexturesBackground.emplace_back(textureBackground);
     }
 
-    m_textureSoldierShadow = Texture::CreateTexture("../src/resources/fight/soldier_1/shadow.png");
+    m_textureSoldierShadow = Texture::CreateTexture("../src/resources/zombie_land/soldier_1/shadow.png");
 
     if (!m_textureSoldierShadow || !m_textureSoldierShadow->Load())
     {
@@ -90,7 +90,7 @@ bool Fight::Init()
         return false;
     }
 
-    if (!m_animSoldierIdle.InitSpriteSheet("../src/resources/fight/soldier_1/Idle.png",
+    if (!m_animSoldierIdle.InitSpriteSheet("../src/resources/zombie_land/soldier_1/Idle.png",
                                           g_unSoldierFrameWidth,
                                           g_unSoldierFrameHeight,
                                           g_fFpsSoldierIdle))
@@ -99,7 +99,7 @@ bool Fight::Init()
         return false;
     }
 
-    if (!m_animSoldierWalk.InitSpriteSheet("../src/resources/fight/soldier_1/Walk.png",
+    if (!m_animSoldierWalk.InitSpriteSheet("../src/resources/zombie_land/soldier_1/Walk.png",
                                           g_unSoldierFrameWidth,
                                           g_unSoldierFrameHeight,
                                           g_fFpsSoldierWalk))
@@ -108,7 +108,7 @@ bool Fight::Init()
         return false;
     }
 
-    if (!m_animSoldierShot.InitSpriteSheet("../src/resources/fight/soldier_1/Shot_1.png",
+    if (!m_animSoldierShot.InitSpriteSheet("../src/resources/zombie_land/soldier_1/Shot_1.png",
                                           g_unSoldierFrameWidth,
                                           g_unSoldierFrameHeight,
                                           g_fFpsSoldierShot))
@@ -117,7 +117,7 @@ bool Fight::Init()
         return false;
     }
 
-    if (!m_animSoldierShotContinuous.InitSpriteSheet("../src/resources/fight/soldier_1/Shot_2.png",
+    if (!m_animSoldierShotContinuous.InitSpriteSheet("../src/resources/zombie_land/soldier_1/Shot_2.png",
                                                      g_unSoldierFrameWidth,
                                                      g_unSoldierFrameHeight,
                                                      g_fFpsSoldierShotContinuous))
