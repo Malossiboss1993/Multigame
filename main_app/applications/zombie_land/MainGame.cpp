@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <random>
 
 #include <main_app/MainApp.h>
 #include <main_app/renderer/Renderer.h>
@@ -26,6 +27,21 @@ constexpr float g_fSoldierMinFeetY = 850.0f;
 constexpr float g_fSoldierMaxFeetY = 1030.0f;
 constexpr float g_fSoldierShadowScale = 0.85f;
 
+/*Zombie woman waits, runs to the soldier, then attacks him repeatedly*/
+constexpr float g_fFpsZombieWomanIdle = 10.0f;
+constexpr float g_fFpsZombieWomanRun = 16.0f;
+constexpr float g_fFpsZombieWomanAttack = 12.0f;
+constexpr unsigned int g_unZombieWomanFrameWidth = 96;
+constexpr unsigned int g_unZombieWomanFrameHeight = 96;
+constexpr float g_fZombieWomanScale = 3.333333f;
+constexpr float g_fZombieWomanSpawnWorldX = 1250.0f;
+constexpr float g_fZombieWomanSpawnFeetY = 930.0f;
+constexpr float g_fZombieWomanShadowScale = 0.45f;
+constexpr float g_fZombieWomanRunSpeed = 500.0f;
+constexpr float g_fZombieWomanAttackRange = 120.0f;
+constexpr float g_fZombieWomanSpawnDelaySeconds = 2.0f;
+constexpr float g_fZombieWomanAttackCooldownSeconds = 0.25f;
+
 /*The camera starts scrolling forward once the soldier reaches the middle of the screen*/
 constexpr float g_fForwardCameraAnchorScreenRatio = 0.5f;
 
@@ -45,7 +61,7 @@ constexpr float g_arrBackgroundParallaxFactors[] =
 constexpr std::size_t g_unBackgroundParallaxFactorsCount =
     sizeof(g_arrBackgroundParallaxFactors) / sizeof(g_arrBackgroundParallaxFactors[0]);
 
-/*Draw the soldier behind the foreground cactus layer*/
+/*Draw the characters behind the foreground cactus layer*/
 constexpr std::size_t g_unSoldierBackgroundLayerIndex = 4;
 
 Fight::Fight()
@@ -132,6 +148,65 @@ bool Fight::Init()
     };
     m_animSoldierShot.SetEndCallback(onShotEnd);
 
+    if (!m_animZombieWomanIdle.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Idle.png",
+                                               g_unZombieWomanFrameWidth,
+                                               g_unZombieWomanFrameHeight,
+                                               g_fFpsZombieWomanIdle))
+    {
+        LOG_ERROR("Zombie Land - Unable to load zombie woman idle animation !");
+        return false;
+    }
+
+    if (!m_animZombieWomanRun.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Run.png",
+                                              g_unZombieWomanFrameWidth,
+                                              g_unZombieWomanFrameHeight,
+                                              g_fFpsZombieWomanRun))
+    {
+        LOG_ERROR("Zombie Land - Unable to load zombie woman run animation !");
+        return false;
+    }
+
+    if (!m_animZombieWomanAttack1.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Attack_1.png",
+                                                  g_unZombieWomanFrameWidth,
+                                                  g_unZombieWomanFrameHeight,
+                                                  g_fFpsZombieWomanAttack))
+    {
+        LOG_ERROR("Zombie Land - Unable to load zombie woman attack 1 animation !");
+        return false;
+    }
+
+    if (!m_animZombieWomanAttack2.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Attack_2.png",
+                                                  g_unZombieWomanFrameWidth,
+                                                  g_unZombieWomanFrameHeight,
+                                                  g_fFpsZombieWomanAttack))
+    {
+        LOG_ERROR("Zombie Land - Unable to load zombie woman attack 2 animation !");
+        return false;
+    }
+
+    if (!m_animZombieWomanAttack3.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Attack_3.png",
+                                                  g_unZombieWomanFrameWidth,
+                                                  g_unZombieWomanFrameHeight,
+                                                  g_fFpsZombieWomanAttack))
+    {
+        LOG_ERROR("Zombie Land - Unable to load zombie woman attack 3 animation !");
+        return false;
+    }
+
+    std::function<void()> onZombieWomanAttackEnd = [this]()
+    {
+        if (m_eZombieWomanState == EZombieWomanState::eAttacking)
+        {
+            m_eZombieWomanState = EZombieWomanState::eAttackCooldown;
+            m_fZombieWomanStateTimer = 0.0f;
+            m_animZombieWomanIdle.Start(g_fFpsZombieWomanIdle,
+                                        EAnimPlayerPlayMode::ePlayLooped);
+        }
+    };
+    m_animZombieWomanAttack1.SetEndCallback(onZombieWomanAttackEnd);
+    m_animZombieWomanAttack2.SetEndCallback(onZombieWomanAttackEnd);
+    m_animZombieWomanAttack3.SetEndCallback(onZombieWomanAttackEnd);
+
     LOG_INFO("Zombie Land - Initialized ...");
     return true;
 }
@@ -142,6 +217,11 @@ bool Fight::Deinit()
     m_animSoldierWalk.Deinit();
     m_animSoldierShot.Deinit();
     m_animSoldierShotContinuous.Deinit();
+    m_animZombieWomanIdle.Deinit();
+    m_animZombieWomanRun.Deinit();
+    m_animZombieWomanAttack1.Deinit();
+    m_animZombieWomanAttack2.Deinit();
+    m_animZombieWomanAttack3.Deinit();
 
     if (m_textureSoldierShadow)
     {
@@ -157,6 +237,7 @@ bool Fight::HandleEvent()
 {
     UpdateSoldierShooting();
     UpdateSoldierMovement();
+    UpdateZombieWoman();
 
     /*The panel remains active so the Home button can return to App Select*/
     return MainApp::GetInstance().ptrPanel->HandleEvent();
@@ -181,6 +262,18 @@ void Fight::OnEnter()
     m_animSoldierShotContinuous.Stop();
     m_animSoldierIdle.Start(g_fFpsSoldierIdle, EAnimPlayerPlayMode::ePlayLooped);
 
+    m_eZombieWomanState = EZombieWomanState::eIdle;
+    m_fZombieWomanWorldX = g_fZombieWomanSpawnWorldX;
+    m_fZombieWomanFeetY = g_fZombieWomanSpawnFeetY;
+    m_fZombieWomanStateTimer = 0.0f;
+    m_bZombieWomanFacingRight = false;
+    m_unZombieWomanAttackIndex = 0;
+    m_animZombieWomanRun.Stop();
+    m_animZombieWomanAttack1.Stop();
+    m_animZombieWomanAttack2.Stop();
+    m_animZombieWomanAttack3.Stop();
+    m_animZombieWomanIdle.Start(g_fFpsZombieWomanIdle, EAnimPlayerPlayMode::ePlayLooped);
+
     LOG_INFO("Zombie Land - Transition to Application succeed");
 }
 
@@ -190,6 +283,12 @@ void Fight::OnExit()
     m_animSoldierWalk.Stop();
     m_animSoldierShot.Stop();
     m_animSoldierShotContinuous.Stop();
+    m_animZombieWomanIdle.Stop();
+    m_animZombieWomanRun.Stop();
+    m_animZombieWomanAttack1.Stop();
+    m_animZombieWomanAttack2.Stop();
+    m_animZombieWomanAttack3.Stop();
+    m_eZombieWomanState = EZombieWomanState::eIdle;
     m_bSoldierMoving = false;
     m_bSoldierShooting = false;
     m_bSoldierContinuousShooting = false;
@@ -220,6 +319,7 @@ void Fight::OnDraw()
     {
         if (unLayerIndex == unSoldierLayerIndex)
         {
+            DrawZombieWoman();
             DrawSoldier();
         }
 
@@ -228,6 +328,7 @@ void Fight::OnDraw()
 
     if (unSoldierLayerIndex >= m_vecTexturesBackground.size())
     {
+        DrawZombieWoman();
         DrawSoldier();
     }
 
@@ -271,7 +372,7 @@ void Fight::DrawBackgroundLayer(std::size_t unLayerIndex, float fScaleFactor)
     }
 }
 
-void Fight::DrawSoldierShadow()
+void Fight::DrawShadow(float fFeetX, float fFeetY, float fScale)
 {
     if (!m_textureSoldierShadow)
     {
@@ -280,14 +381,14 @@ void Fight::DrawSoldierShadow()
 
     const auto &rend = MainApp::GetInstance().ptrRend;
     const float fShadowWidth =
-        static_cast<float>(m_textureSoldierShadow->GetWidth()) * g_fSoldierShadowScale;
+        static_cast<float>(m_textureSoldierShadow->GetWidth()) * fScale;
     const float fShadowHeight =
-        static_cast<float>(m_textureSoldierShadow->GetHeight()) * g_fSoldierShadowScale;
+        static_cast<float>(m_textureSoldierShadow->GetHeight()) * fScale;
 
     rend->DrawPictureScaled(m_textureSoldierShadow,
-                            m_fSoldierFeetX - fShadowWidth * 0.5f,
-                            m_fSoldierFeetY - fShadowHeight * 0.5f,
-                            g_fSoldierShadowScale);
+                            fFeetX - fShadowWidth * 0.5f,
+                            fFeetY - fShadowHeight * 0.5f,
+                            fScale);
 }
 
 void Fight::UpdateSoldierShooting()
@@ -413,6 +514,136 @@ void Fight::UpdateSoldierMovement()
     }
 }
 
+void Fight::UpdateZombieWoman()
+{
+    const float fDeltaTimeSeconds = MainApp::GetInstance().GetDeltaTime() / 1000.0f;
+    const float fSoldierWorldX = m_fSoldierFeetX + m_fWorldOffsetX;
+    const float fDeltaX = fSoldierWorldX - m_fZombieWomanWorldX;
+    const float fDeltaY = m_fSoldierFeetY - m_fZombieWomanFeetY;
+    const float fDistance = std::sqrt(fDeltaX * fDeltaX + fDeltaY * fDeltaY);
+
+    if (std::fabs(fDeltaX) > 0.001f)
+    {
+        m_bZombieWomanFacingRight = fDeltaX > 0.0f;
+    }
+
+    /*Treat the chase as a 2D run towards the soldier, just like the horizontal chase*/
+    const bool bInAttackRange =
+        fDistance <= g_fZombieWomanAttackRange + 0.01f;
+
+    switch (m_eZombieWomanState)
+    {
+        case EZombieWomanState::eIdle:
+        {
+            m_fZombieWomanStateTimer += fDeltaTimeSeconds;
+
+            if (m_fZombieWomanStateTimer >= g_fZombieWomanSpawnDelaySeconds)
+            {
+                m_fZombieWomanStateTimer = 0.0f;
+
+                if (bInAttackRange)
+                {
+                    StartZombieWomanAttack();
+                }
+                else
+                {
+                    StartZombieWomanRun();
+                }
+            }
+
+            break;
+        }
+        case EZombieWomanState::eRunning:
+        {
+            if (bInAttackRange)
+            {
+                m_animZombieWomanRun.Stop();
+                StartZombieWomanAttack();
+            }
+            else if (fDistance > 0.001f)
+            {
+                const float fStep =
+                    std::min(g_fZombieWomanRunSpeed * fDeltaTimeSeconds,
+                             fDistance - g_fZombieWomanAttackRange);
+                const float fDirectionX = fDeltaX / fDistance;
+                const float fDirectionY = fDeltaY / fDistance;
+
+                m_fZombieWomanWorldX += fDirectionX * fStep;
+                m_fZombieWomanFeetY += fDirectionY * fStep;
+                m_fZombieWomanFeetY =
+                    std::clamp(m_fZombieWomanFeetY, g_fSoldierMinFeetY,
+                               g_fSoldierMaxFeetY);
+            }
+
+            break;
+        }
+        case EZombieWomanState::eAttacking:
+        {
+            /*The attack animation's end callback enters the cooldown state*/
+            break;
+        }
+        case EZombieWomanState::eAttackCooldown:
+        {
+            m_fZombieWomanStateTimer += fDeltaTimeSeconds;
+
+            if (m_fZombieWomanStateTimer >= g_fZombieWomanAttackCooldownSeconds)
+            {
+                m_fZombieWomanStateTimer = 0.0f;
+
+                if (bInAttackRange)
+                {
+                    StartZombieWomanAttack();
+                }
+                else
+                {
+                    StartZombieWomanRun();
+                }
+            }
+
+            break;
+        }
+    }
+}
+
+void Fight::StartZombieWomanRun()
+{
+    m_animZombieWomanIdle.Stop();
+    m_eZombieWomanState = EZombieWomanState::eRunning;
+    m_fZombieWomanStateTimer = 0.0f;
+    m_animZombieWomanRun.Start(g_fFpsZombieWomanRun, EAnimPlayerPlayMode::ePlayLooped);
+}
+
+void Fight::StartZombieWomanAttack()
+{
+    static std::mt19937 rng(std::random_device{}());
+    static std::uniform_int_distribution<unsigned int> attackDistribution(0, 2);
+    m_unZombieWomanAttackIndex = attackDistribution(rng);
+
+    m_animZombieWomanIdle.Stop();
+    m_animZombieWomanRun.Stop();
+    m_animZombieWomanAttack1.Stop();
+    m_animZombieWomanAttack2.Stop();
+    m_animZombieWomanAttack3.Stop();
+
+    m_eZombieWomanState = EZombieWomanState::eAttacking;
+    m_fZombieWomanStateTimer = 0.0f;
+    GetZombieWomanAttackAnimation().Start(g_fFpsZombieWomanAttack,
+                                          EAnimPlayerPlayMode::ePlayOnce);
+}
+
+AnimPlayer &Fight::GetZombieWomanAttackAnimation()
+{
+    switch (m_unZombieWomanAttackIndex)
+    {
+        case 1:
+            return m_animZombieWomanAttack2;
+        case 2:
+            return m_animZombieWomanAttack3;
+        default:
+            return m_animZombieWomanAttack1;
+    }
+}
+
 void Fight::DrawSoldier()
 {
     const float fFrameSize = static_cast<float>(g_unSoldierFrameWidth) * g_fSoldierScale;
@@ -421,7 +652,7 @@ void Fight::DrawSoldier()
     const bool bFlipHorizontal = !m_bSoldierFacingRight;
 
     /*The shadow is drawn first, so the soldier stands on top of it*/
-    DrawSoldierShadow();
+    DrawShadow(m_fSoldierFeetX, m_fSoldierFeetY, g_fSoldierShadowScale);
 
     if (m_bSoldierContinuousShooting)
     {
@@ -439,6 +670,45 @@ void Fight::DrawSoldier()
     else
     {
         m_animSoldierIdle.Draw(fSoldierX, fSoldierY, g_fSoldierScale, bFlipHorizontal);
+    }
+}
+
+void Fight::DrawZombieWoman()
+{
+    const auto &rend = MainApp::GetInstance().ptrRend;
+    const float fFrameSize =
+        static_cast<float>(g_unZombieWomanFrameWidth) * g_fZombieWomanScale;
+    const float fFeetX = m_fZombieWomanWorldX - m_fWorldOffsetX;
+    const float fFrameX = fFeetX - fFrameSize * 0.5f;
+    const float fFrameY = m_fZombieWomanFeetY - fFrameSize;
+    const float fScreenWidth = static_cast<float>(rend->SCREEN_WIDTH);
+    const bool bFlipHorizontal = !m_bZombieWomanFacingRight;
+
+    if (fFrameX + fFrameSize < 0.0f || fFrameX > fScreenWidth)
+    {
+        return;
+    }
+
+    /*The shadow is drawn first, so the zombie woman stands on top of it*/
+    DrawShadow(fFeetX, m_fZombieWomanFeetY, g_fZombieWomanShadowScale);
+
+    switch (m_eZombieWomanState)
+    {
+        case EZombieWomanState::eRunning:
+            m_animZombieWomanRun.Draw(fFrameX, fFrameY, g_fZombieWomanScale,
+                                      bFlipHorizontal);
+            break;
+        case EZombieWomanState::eAttacking:
+            GetZombieWomanAttackAnimation().Draw(fFrameX, fFrameY,
+                                                 g_fZombieWomanScale,
+                                                 bFlipHorizontal);
+            break;
+        case EZombieWomanState::eIdle:
+        case EZombieWomanState::eAttackCooldown:
+        default:
+            m_animZombieWomanIdle.Draw(fFrameX, fFrameY, g_fZombieWomanScale,
+                                       bFlipHorizontal);
+            break;
     }
 }
 
