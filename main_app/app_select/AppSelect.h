@@ -15,7 +15,7 @@ enum class EApps
     eKidsFantasy,
     eParticleBuilder,
     eRoulette,
-    eFight,
+    eZombieLand,
     eAppSelect,
     eTotalAppsCount
 };
@@ -72,7 +72,7 @@ private:
     Roulette m_Roulette;
 
     /*Zombie Land object*/
-    Fight m_Fight;
+    ZombieLand m_zombieLand;
 
     /*Particle System Star Effect*/
     ParticleSystem m_particleStarEffect;

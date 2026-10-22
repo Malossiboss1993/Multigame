@@ -100,7 +100,7 @@ bool AppSelect::Init()
     RegisterClient(EApps::eParticleBuilder, &m_ParticleBuilder);
 
     /*Register Client Zombie Land*/
-    RegisterClient(EApps::eFight, &m_Fight);
+    RegisterClient(EApps::eZombieLand, &m_zombieLand);
 
     /*Initalize all the applications*/
     std::vector<IApp *> vecInitializedApps;
@@ -218,7 +218,7 @@ bool AppSelect::HandleEvent()
         }
         else if (m_bIsFightHovered && m_buttonFight.IsPressed(nXMouse, nYMouse))
         {
-            eSelectedApp = EApps::eFight;
+            eSelectedApp = EApps::eZombieLand;
             bAppSelected = true;
         }
 
