@@ -11,10 +11,13 @@ namespace
 {
 constexpr float g_fFpsIdle = 10.0f;
 constexpr float g_fFpsWalk = 10.0f;
+constexpr float g_fFpsRun = 16.0f;
 constexpr float g_fFpsShot = 12.0f;
 constexpr float g_fFpsShotContinuous = 24.0f;
 constexpr float g_fMoveSpeed = 300.0f;
 constexpr float g_fVerticalMoveSpeed = 200.0f;
+constexpr float g_fRunSpeed = 600.0f;
+constexpr float g_fRunVerticalSpeed = 400.0f;
 
 /*The soldier is rooted in place while firing, so he feels focused on shooting*/
 constexpr float g_fShootingMoveSpeedMultiplier = 0.0f;
@@ -50,6 +53,13 @@ bool Player::Init()
         return false;
     }
 
+    if (!m_animRun.InitSpriteSheet("../src/resources/zombie_land/soldier_1/Run.png",
+                                  g_unFrameWidth, g_unFrameHeight, g_fFpsRun))
+    {
+        LOG_ERROR("Player - Unable to load run animation !");
+        return false;
+    }
+
     if (!m_animShot.InitSpriteSheet("../src/resources/zombie_land/soldier_1/Shot_1.png",
                                    g_unFrameWidth, g_unFrameHeight, g_fFpsShot))
     {
@@ -79,6 +89,7 @@ void Player::Deinit()
 {
     m_animIdle.Deinit();
     m_animWalk.Deinit();
+    m_animRun.Deinit();
     m_animShot.Deinit();
     m_animShotContinuous.Deinit();
 
@@ -95,12 +106,14 @@ void Player::Reset()
 {
     /*Keep the player's position between app entries; only clear runtime state*/
     m_bMoving = false;
+    m_bRunning = false;
     m_bShooting = false;
     m_bContinuousShooting = false;
     m_bShootKeyWasDown = false;
     m_nHorizontalDirection = 0;
 
     m_animWalk.Stop();
+    m_animRun.Stop();
     m_animShot.Stop();
     m_animShotContinuous.Stop();
     m_animIdle.Start(g_fFpsIdle, EAnimPlayerPlayMode::ePlayLooped);
@@ -109,6 +122,7 @@ void Player::Reset()
 void Player::Stop()
 {
     m_bMoving = false;
+    m_bRunning = false;
     m_bShooting = false;
     m_bContinuousShooting = false;
     m_bShootKeyWasDown = false;
@@ -116,6 +130,7 @@ void Player::Stop()
 
     m_animIdle.Stop();
     m_animWalk.Stop();
+    m_animRun.Stop();
     m_animShot.Stop();
     m_animShotContinuous.Stop();
 }
@@ -126,14 +141,20 @@ void Player::Update(float fDeltaTimeSeconds)
     UpdateMovement(fDeltaTimeSeconds);
 }
 
+bool Player::IsShiftDown() const
+{
+    const auto &rend = MainApp::GetInstance().ptrRend;
+
+    return glfwGetKey(rend->GetWindow(), GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+           glfwGetKey(rend->GetWindow(), GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+}
+
 void Player::UpdateShooting()
 {
     const auto &rend = MainApp::GetInstance().ptrRend;
     const bool bShootKeyDown =
         glfwGetKey(rend->GetWindow(), GLFW_KEY_SPACE) == GLFW_PRESS;
-    const bool bShiftKeyDown =
-        glfwGetKey(rend->GetWindow(), GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
-        glfwGetKey(rend->GetWindow(), GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+    const bool bShiftKeyDown = IsShiftDown();
     const bool bContinuousShootRequested = bShootKeyDown && bShiftKeyDown;
 
     /*Continuous fire lasts only while both Shift and Space are held*/
@@ -174,15 +195,36 @@ void Player::UpdateMovement(float fDeltaTimeSeconds)
     const int nVerticalDirection = static_cast<int>(bMoveDown) - static_cast<int>(bMoveUp);
     const bool bMoving = nDirection != 0 || nVerticalDirection != 0;
 
+    /*Hold Shift with any arrow to run instead of walking*/
+    const bool bRunning = bMoving && IsShiftDown();
+
     m_nHorizontalDirection = nDirection;
 
     if (bMoving)
     {
-        if (!m_bMoving)
+        if (!m_bMoving || m_bRunning != bRunning)
         {
-            m_animIdle.Stop();
-            m_animWalk.Start(g_fFpsWalk, EAnimPlayerPlayMode::ePlayLooped);
+            if (m_bMoving)
+            {
+                m_animWalk.Stop();
+                m_animRun.Stop();
+            }
+            else
+            {
+                m_animIdle.Stop();
+            }
+
+            if (bRunning)
+            {
+                m_animRun.Start(g_fFpsRun, EAnimPlayerPlayMode::ePlayLooped);
+            }
+            else
+            {
+                m_animWalk.Start(g_fFpsWalk, EAnimPlayerPlayMode::ePlayLooped);
+            }
+
             m_bMoving = true;
+            m_bRunning = bRunning;
         }
 
         if (nDirection != 0)
@@ -192,26 +234,29 @@ void Player::UpdateMovement(float fDeltaTimeSeconds)
 
         const float fMoveSpeedMultiplier =
             m_bShooting ? g_fShootingMoveSpeedMultiplier : 1.0f;
+        const float fHorizontalSpeed = m_bRunning ? g_fRunSpeed : g_fMoveSpeed;
+        const float fVerticalSpeed = m_bRunning ? g_fRunVerticalSpeed : g_fVerticalMoveSpeed;
 
         if (nDirection != 0)
         {
-            m_fFeetWorldX += static_cast<float>(nDirection) * g_fMoveSpeed *
+            m_fFeetWorldX += static_cast<float>(nDirection) * fHorizontalSpeed *
                              fMoveSpeedMultiplier * fDeltaTimeSeconds;
         }
 
         if (nVerticalDirection != 0)
         {
-            m_fFeetY += static_cast<float>(nVerticalDirection) *
-                        g_fVerticalMoveSpeed * fMoveSpeedMultiplier *
-                        fDeltaTimeSeconds;
+            m_fFeetY += static_cast<float>(nVerticalDirection) * fVerticalSpeed *
+                        fMoveSpeedMultiplier * fDeltaTimeSeconds;
             m_fFeetY = std::clamp(m_fFeetY, g_fMinFeetY, g_fMaxFeetY);
         }
     }
     else if (m_bMoving)
     {
         m_animWalk.Stop();
+        m_animRun.Stop();
         m_animIdle.Start(g_fFpsIdle, EAnimPlayerPlayMode::ePlayLooped);
         m_bMoving = false;
+        m_bRunning = false;
     }
 }
 
@@ -242,7 +287,14 @@ void Player::Draw(float fWorldOffsetX)
     }
     else if (m_bMoving)
     {
-        m_animWalk.Draw(fFrameX, fFrameY, g_fScale, bFlipHorizontal);
+        if (m_bRunning)
+        {
+            m_animRun.Draw(fFrameX, fFrameY, g_fScale, bFlipHorizontal);
+        }
+        else
+        {
+            m_animWalk.Draw(fFrameX, fFrameY, g_fScale, bFlipHorizontal);
+        }
     }
     else
     {

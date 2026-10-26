@@ -21,12 +21,16 @@ private:
     std::vector<std::shared_ptr<Texture>> m_vecTexturesBackground;
 
     Player m_soldier;
-    Enemy m_zombie;
+    Enemy m_zombieWoman{"zombie_woman", "Zombie Woman"};
+    Enemy m_wildZombie{"wild_zombie", "Wild Zombie"};
+    Enemy m_zombieMan{"zombie_man", "Zombie Man"};
+    std::vector<Enemy *> m_vecEnemies;
 
     /*Horizontal world scroll, used for the parallax backgrounds*/
     float m_fWorldOffsetX = 0.0f;
 
     void UpdateCamera();
+    void RandomizeEnemies();
     void DrawBackgroundLayer(std::size_t unLayerIndex, float fScaleFactor);
 
 public:

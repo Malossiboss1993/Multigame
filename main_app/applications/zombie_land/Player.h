@@ -14,6 +14,7 @@ private:
     float m_fFeetY = 930.0f;
     bool m_bFacingRight = true;
     bool m_bMoving = false;
+    bool m_bRunning = false;
     bool m_bShooting = false;
     bool m_bContinuousShooting = false;
     bool m_bShootKeyWasDown = false;
@@ -21,10 +22,12 @@ private:
 
     AnimPlayer m_animIdle;
     AnimPlayer m_animWalk;
+    AnimPlayer m_animRun;
     AnimPlayer m_animShot;
     AnimPlayer m_animShotContinuous;
     std::shared_ptr<Texture> m_textureShadow;
 
+    bool IsShiftDown() const;
     void UpdateShooting();
     void UpdateMovement(float fDeltaTimeSeconds);
     void DrawShadow(float fFeetX, float fFeetY);

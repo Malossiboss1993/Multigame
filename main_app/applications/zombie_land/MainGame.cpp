@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <numeric>
+#include <random>
 
 #include <main_app/MainApp.h>
 #include <main_app/renderer/Renderer.h>
@@ -32,6 +34,7 @@ constexpr std::size_t g_unBackgroundParallaxFactorsCount =
 constexpr std::size_t g_unCharacterBackgroundLayerIndex = 4;
 
 ZombieLand::ZombieLand()
+    : m_vecEnemies{&m_zombieWoman, &m_wildZombie, &m_zombieMan}
 {
 }
 
@@ -71,13 +74,16 @@ bool ZombieLand::Init()
         return false;
     }
 
-    if (!m_zombie.Init())
+    for (Enemy *pEnemy : m_vecEnemies)
     {
-        LOG_ERROR("Zombie Land - Unable to initialize enemy !");
-        return false;
-    }
+        if (!pEnemy->Init())
+        {
+            LOG_ERROR("Zombie Land - Unable to initialize enemy !");
+            return false;
+        }
 
-    m_zombie.SetTarget(&m_soldier);
+        pEnemy->SetTarget(&m_soldier);
+    }
 
     LOG_INFO("Zombie Land - Initialized ...");
     return true;
@@ -86,7 +92,11 @@ bool ZombieLand::Init()
 bool ZombieLand::Deinit()
 {
     m_soldier.Deinit();
-    m_zombie.Deinit();
+
+    for (Enemy *pEnemy : m_vecEnemies)
+    {
+        pEnemy->Deinit();
+    }
 
     LOG_WARN("Zombie Land - Deinitialized ...");
     return true;
@@ -104,7 +114,10 @@ bool ZombieLand::HandleEvent()
         UpdateCamera();
     }
 
-    m_zombie.Update(fDeltaTimeSeconds);
+    for (Enemy *pEnemy : m_vecEnemies)
+    {
+        pEnemy->Update(fDeltaTimeSeconds);
+    }
 
     /*The panel remains active so the Home button can return to App Select*/
     return MainApp::GetInstance().ptrPanel->HandleEvent();
@@ -121,7 +134,13 @@ void ZombieLand::OnEnter()
     MainApp::GetInstance().ptrPanel->HideFields();
 
     m_soldier.Reset();
-    m_zombie.Reset();
+
+    RandomizeEnemies();
+
+    for (Enemy *pEnemy : m_vecEnemies)
+    {
+        pEnemy->Reset();
+    }
 
     LOG_INFO("Zombie Land - Transition to Application succeed");
 }
@@ -129,7 +148,11 @@ void ZombieLand::OnEnter()
 void ZombieLand::OnExit()
 {
     m_soldier.Stop();
-    m_zombie.Stop();
+
+    for (Enemy *pEnemy : m_vecEnemies)
+    {
+        pEnemy->Stop();
+    }
 
     MainApp::GetInstance().ptrPanel->ShowFields();
     LOG_INFO("Zombie Land - Exit from Application");
@@ -156,7 +179,11 @@ void ZombieLand::OnDraw()
     {
         if (unLayerIndex == unCharacterLayerIndex)
         {
-            m_zombie.Draw(m_fWorldOffsetX);
+            for (Enemy *pEnemy : m_vecEnemies)
+            {
+                pEnemy->Draw(m_fWorldOffsetX);
+            }
+
             m_soldier.Draw(m_fWorldOffsetX);
         }
 
@@ -165,7 +192,11 @@ void ZombieLand::OnDraw()
 
     if (unCharacterLayerIndex >= m_vecTexturesBackground.size())
     {
-        m_zombie.Draw(m_fWorldOffsetX);
+        for (Enemy *pEnemy : m_vecEnemies)
+        {
+            pEnemy->Draw(m_fWorldOffsetX);
+        }
+
         m_soldier.Draw(m_fWorldOffsetX);
     }
 
@@ -201,6 +232,60 @@ void ZombieLand::UpdateCamera()
         m_soldier.GetFeetWorldX() - m_fWorldOffsetX, fMinFeetX, fMaxFeetX);
 
     m_soldier.SetFeetWorldX(fClampedScreenX + m_fWorldOffsetX);
+}
+
+void ZombieLand::RandomizeEnemies()
+{
+    if (m_vecEnemies.empty())
+    {
+        return;
+    }
+
+    const auto &rend = MainApp::GetInstance().ptrRend;
+    const float fScreenWidth = static_cast<float>(rend->SCREEN_WIDTH);
+    const float fMargin = 180.0f;
+    const float fPlayerScreenX = m_soldier.GetFeetWorldX() - m_fWorldOffsetX;
+    const float fMaxScreenX = std::max(fMargin, fScreenWidth - fMargin);
+    const float fDesiredMinScreenX = fPlayerScreenX + 250.0f;
+    float fMinScreenX = fMargin;
+
+    /*Prefer spawning away from the soldier; fall back to the full screen if needed*/
+    if (fDesiredMinScreenX < fMaxScreenX)
+    {
+        fMinScreenX = std::max(fMargin, fDesiredMinScreenX);
+    }
+
+    const float fBandWidth =
+        (fMaxScreenX - fMinScreenX) / static_cast<float>(m_vecEnemies.size());
+
+    static std::mt19937 rng(std::random_device{}());
+    std::uniform_real_distribution<float> xDistribution(0.0f, 1.0f);
+    std::uniform_real_distribution<float> yDistribution(850.0f, 1030.0f);
+    std::uniform_real_distribution<float> delayDistribution(1.5f, 3.5f);
+    std::uniform_real_distribution<float> speedDistribution(350.0f, 650.0f);
+
+    /*Shuffle the bands so each enemy type gets a different random slot*/
+    std::vector<std::size_t> vecBandOrder(m_vecEnemies.size());
+    std::iota(vecBandOrder.begin(), vecBandOrder.end(), 0);
+    std::shuffle(vecBandOrder.begin(), vecBandOrder.end(), rng);
+
+    for (std::size_t i = 0; i < m_vecEnemies.size(); ++i)
+    {
+        const float fBandStart =
+            fMinScreenX + fBandWidth * static_cast<float>(vecBandOrder[i]);
+        const float fScreenX = fBandStart + fBandWidth * xDistribution(rng);
+        const float fWorldX = fScreenX + m_fWorldOffsetX;
+        const float fFeetY = yDistribution(rng);
+        const float fSpawnDelay = delayDistribution(rng);
+        const float fRunSpeed = speedDistribution(rng);
+
+        m_vecEnemies[i]->SetSpawnPosition(fWorldX, fFeetY);
+        m_vecEnemies[i]->SetSpawnDelay(fSpawnDelay);
+        m_vecEnemies[i]->SetRunSpeed(fRunSpeed);
+
+        LOG_INFO("Zombie Land - Enemy {0} spawn: screen X {1}, feet Y {2}, speed {3}, delay {4}",
+                 i, fScreenX, fFeetY, fRunSpeed, fSpawnDelay);
+    }
 }
 
 void ZombieLand::DrawBackgroundLayer(std::size_t unLayerIndex, float fScaleFactor)

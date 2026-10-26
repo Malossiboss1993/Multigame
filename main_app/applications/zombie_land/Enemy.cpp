@@ -4,6 +4,7 @@
 #include <cmath>
 #include <functional>
 #include <random>
+#include <utility>
 
 #include <main_app/MainApp.h>
 #include <main_app/renderer/Renderer.h>
@@ -17,21 +18,44 @@ constexpr float g_fFpsAttack = 12.0f;
 constexpr unsigned int g_unFrameWidth = 96;
 constexpr unsigned int g_unFrameHeight = 96;
 constexpr float g_fScale = 3.333333f;
-constexpr float g_fSpawnWorldX = 1250.0f;
-constexpr float g_fSpawnFeetY = 930.0f;
 constexpr float g_fShadowScale = 0.45f;
-constexpr float g_fRunSpeed = 500.0f;
 constexpr float g_fAttackRange = 120.0f;
 constexpr float g_fVerticalAttackRange = 20.0f;
-constexpr float g_fSpawnDelaySeconds = 2.0f;
 constexpr float g_fAttackCooldownSeconds = 0.25f;
 constexpr float g_fMinFeetY = 850.0f;
 constexpr float g_fMaxFeetY = 1030.0f;
 }
 
+Enemy::Enemy(std::string strResourceFolder, std::string strDisplayName)
+    : m_strResourceFolder(std::move(strResourceFolder)),
+      m_strDisplayName(std::move(strDisplayName))
+{
+}
+
 void Enemy::SetTarget(const ICharacter *pTarget)
 {
     m_pTarget = pTarget;
+}
+
+void Enemy::SetSpawnPosition(float fWorldX, float fFeetY)
+{
+    m_fSpawnWorldX = fWorldX;
+    m_fSpawnFeetY = std::clamp(fFeetY, g_fMinFeetY, g_fMaxFeetY);
+}
+
+void Enemy::SetSpawnDelay(float fSeconds)
+{
+    m_fSpawnDelaySeconds = std::max(0.0f, fSeconds);
+}
+
+void Enemy::SetRunSpeed(float fSpeed)
+{
+    m_fRunSpeed = std::max(0.0f, fSpeed);
+}
+
+std::string Enemy::GetAssetPath(const std::string &strFileName) const
+{
+    return "../src/resources/zombie_land/" + m_strResourceFolder + "/" + strFileName;
 }
 
 bool Enemy::Init()
@@ -40,42 +64,42 @@ bool Enemy::Init()
 
     if (!m_textureShadow || !m_textureShadow->Load())
     {
-        LOG_ERROR("Enemy - Unable to load shadow !");
+        LOG_ERROR("Enemy - Unable to load shadow for \"{0}\" !", m_strDisplayName);
         return false;
     }
 
-    if (!m_animIdle.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Idle.png",
+    if (!m_animIdle.InitSpriteSheet(GetAssetPath("Idle.png"),
                                     g_unFrameWidth, g_unFrameHeight, g_fFpsIdle))
     {
-        LOG_ERROR("Enemy - Unable to load idle animation !");
+        LOG_ERROR("Enemy - Unable to load idle animation for \"{0}\" !", m_strDisplayName);
         return false;
     }
 
-    if (!m_animRun.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Run.png",
+    if (!m_animRun.InitSpriteSheet(GetAssetPath("Run.png"),
                                    g_unFrameWidth, g_unFrameHeight, g_fFpsRun))
     {
-        LOG_ERROR("Enemy - Unable to load run animation !");
+        LOG_ERROR("Enemy - Unable to load run animation for \"{0}\" !", m_strDisplayName);
         return false;
     }
 
-    if (!m_animAttack1.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Attack_1.png",
+    if (!m_animAttack1.InitSpriteSheet(GetAssetPath("Attack_1.png"),
                                        g_unFrameWidth, g_unFrameHeight, g_fFpsAttack))
     {
-        LOG_ERROR("Enemy - Unable to load attack 1 animation !");
+        LOG_ERROR("Enemy - Unable to load attack 1 animation for \"{0}\" !", m_strDisplayName);
         return false;
     }
 
-    if (!m_animAttack2.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Attack_2.png",
+    if (!m_animAttack2.InitSpriteSheet(GetAssetPath("Attack_2.png"),
                                        g_unFrameWidth, g_unFrameHeight, g_fFpsAttack))
     {
-        LOG_ERROR("Enemy - Unable to load attack 2 animation !");
+        LOG_ERROR("Enemy - Unable to load attack 2 animation for \"{0}\" !", m_strDisplayName);
         return false;
     }
 
-    if (!m_animAttack3.InitSpriteSheet("../src/resources/zombie_land/zombie_woman/Attack_3.png",
+    if (!m_animAttack3.InitSpriteSheet(GetAssetPath("Attack_3.png"),
                                        g_unFrameWidth, g_unFrameHeight, g_fFpsAttack))
     {
-        LOG_ERROR("Enemy - Unable to load attack 3 animation !");
+        LOG_ERROR("Enemy - Unable to load attack 3 animation for \"{0}\" !", m_strDisplayName);
         return false;
     }
 
@@ -92,7 +116,7 @@ bool Enemy::Init()
     m_animAttack2.SetEndCallback(onAttackEnd);
     m_animAttack3.SetEndCallback(onAttackEnd);
 
-    LOG_INFO("Enemy - Initialized ...");
+    LOG_INFO("Enemy - Initialized \"{0}\" ...", m_strDisplayName);
     return true;
 }
 
@@ -110,14 +134,14 @@ void Enemy::Deinit()
         m_textureShadow.reset();
     }
 
-    LOG_WARN("Enemy - Deinitialized ...");
+    LOG_WARN("Enemy - Deinitialized \"{0}\" ...", m_strDisplayName);
 }
 
 void Enemy::Reset()
 {
     m_eState = EState::eIdle;
-    m_fFeetWorldX = g_fSpawnWorldX;
-    m_fFeetY = g_fSpawnFeetY;
+    m_fFeetWorldX = m_fSpawnWorldX;
+    m_fFeetY = m_fSpawnFeetY;
     m_fStateTimer = 0.0f;
     m_bFacingRight = false;
     m_unAttackIndex = 0;
@@ -172,7 +196,7 @@ void Enemy::Update(float fDeltaTimeSeconds)
         {
             m_fStateTimer += fDeltaTimeSeconds;
 
-            if (m_fStateTimer >= g_fSpawnDelaySeconds)
+            if (m_fStateTimer >= m_fSpawnDelaySeconds)
             {
                 m_fStateTimer = 0.0f;
 
@@ -197,7 +221,7 @@ void Enemy::Update(float fDeltaTimeSeconds)
             }
             else
             {
-                const float fMaxStep = g_fRunSpeed * fDeltaTimeSeconds;
+                const float fMaxStep = m_fRunSpeed * fDeltaTimeSeconds;
 
                 if (!bHorizontallyInRange && !bVerticallyAligned &&
                     fDistance > 0.001f)
