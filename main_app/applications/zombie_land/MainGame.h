@@ -31,6 +31,7 @@ private:
 
     void UpdateCamera();
     void RandomizeEnemies();
+    Enemy *GetNearestEnemy() const;
     void DrawBackgroundLayer(std::size_t unLayerIndex, float fScaleFactor);
 
 public:

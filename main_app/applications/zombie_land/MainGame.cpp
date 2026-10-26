@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <numeric>
 #include <random>
 
@@ -119,6 +120,22 @@ bool ZombieLand::HandleEvent()
         pEnemy->Update(fDeltaTimeSeconds);
     }
 
+    if (m_soldier.ConsumeGrenadeThrowRequest())
+    {
+        Enemy *pTarget = GetNearestEnemy();
+
+        if (pTarget)
+        {
+            m_soldier.ThrowGrenadeAt(pTarget->GetFeetWorldX(), pTarget->GetFeetY());
+            LOG_INFO("Zombie Land - Grenade target selected at world X {0}, feet Y {1}",
+                     pTarget->GetFeetWorldX(), pTarget->GetFeetY());
+        }
+        else
+        {
+            LOG_INFO("Zombie Land - No enemy available for grenade target");
+        }
+    }
+
     /*The panel remains active so the Home button can return to App Select*/
     return MainApp::GetInstance().ptrPanel->HandleEvent();
 }
@@ -200,6 +217,10 @@ void ZombieLand::OnDraw()
         m_soldier.Draw(m_fWorldOffsetX);
     }
 
+    /*Draw the grenade projectile and explosion above the foreground layers so
+      the effect stays visible when the target stands behind a cactus*/
+    m_soldier.DrawGrenadeEffects(m_fWorldOffsetX);
+
     /*Draw Panel, including the Home button used to exit*/
     MainApp::GetInstance().ptrPanel->OnDraw();
 }
@@ -232,6 +253,27 @@ void ZombieLand::UpdateCamera()
         m_soldier.GetFeetWorldX() - m_fWorldOffsetX, fMinFeetX, fMaxFeetX);
 
     m_soldier.SetFeetWorldX(fClampedScreenX + m_fWorldOffsetX);
+}
+
+Enemy *ZombieLand::GetNearestEnemy() const
+{
+    Enemy *pNearestEnemy = nullptr;
+    float fNearestDistanceSq = std::numeric_limits<float>::max();
+
+    for (Enemy *pEnemy : m_vecEnemies)
+    {
+        const float fDeltaX = pEnemy->GetFeetWorldX() - m_soldier.GetFeetWorldX();
+        const float fDeltaY = pEnemy->GetFeetY() - m_soldier.GetFeetY();
+        const float fDistanceSq = fDeltaX * fDeltaX + fDeltaY * fDeltaY;
+
+        if (fDistanceSq < fNearestDistanceSq)
+        {
+            fNearestDistanceSq = fDistanceSq;
+            pNearestEnemy = pEnemy;
+        }
+    }
+
+    return pNearestEnemy;
 }
 
 void ZombieLand::RandomizeEnemies()

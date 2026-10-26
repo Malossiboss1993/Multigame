@@ -25,12 +25,39 @@ private:
     AnimPlayer m_animRun;
     AnimPlayer m_animShot;
     AnimPlayer m_animShotContinuous;
+    AnimPlayer m_animGrenade;
+    AnimPlayer m_animExplosion;
     std::shared_ptr<Texture> m_textureShadow;
+    std::shared_ptr<Texture> m_textureGrenadeSheet;
+
+    bool m_bGrenadeKeyWasDown = false;
+    bool m_bGrenadeHeld = false;
+    bool m_bGrenadeThrowRequested = false;
+    bool m_bGrenadeThrowing = false;
+    bool m_bGrenadeInFlight = false;
+    bool m_bExplosionActive = false;
+    float m_fGrenadeStartWorldX = 0.0f;
+    float m_fGrenadeStartWorldY = 0.0f;
+    float m_fGrenadeTargetWorldX = 0.0f;
+    float m_fGrenadeTargetFeetY = 0.0f;
+    float m_fGrenadeProjectileElapsed = 0.0f;
+    float m_fGrenadeProjectileDuration = 0.7f;
+    float m_fGrenadeArcHeight = 160.0f;
+    float m_fExplosionWorldX = 0.0f;
+    float m_fExplosionFeetY = 0.0f;
 
     bool IsShiftDown() const;
+    bool IsGrenadeKeyDown() const;
+    bool IsGrenadeActionInProgress() const;
+    void UpdateGrenadeInput();
+    void UpdateGrenade(float fDeltaTimeSeconds);
     void UpdateShooting();
     void UpdateMovement(float fDeltaTimeSeconds);
+    void CancelShooting();
+    void StartGrenadeProjectile();
+    void StartExplosion();
     void DrawShadow(float fFeetX, float fFeetY);
+    void DrawGrenadeHeld(float fFrameX, float fFrameY, bool bFlipHorizontal);
 
 public:
     bool Init() override;
@@ -39,6 +66,13 @@ public:
     void Stop() override;
     void Update(float fDeltaTimeSeconds) override;
     void Draw(float fWorldOffsetX) override;
+
+    /*Zombie Land draws the grenade effects above the foreground background layers*/
+    void DrawGrenadeEffects(float fWorldOffsetX);
+
+    /*Zombie Land asks the player to throw after the Ctrl key is released*/
+    bool ConsumeGrenadeThrowRequest();
+    void ThrowGrenadeAt(float fTargetWorldX, float fTargetFeetY);
 
     float GetFeetWorldX() const override;
     float GetFeetY() const override;
