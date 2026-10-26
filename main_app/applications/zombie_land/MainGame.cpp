@@ -34,8 +34,12 @@ constexpr std::size_t g_unBackgroundParallaxFactorsCount =
 /*Draw the characters behind the foreground cactus layer*/
 constexpr std::size_t g_unCharacterBackgroundLayerIndex = 4;
 
+/*Cap the number of enemies that can appear in one run*/
+constexpr std::size_t g_unMaxActiveEnemies = 4;
+
 ZombieLand::ZombieLand()
-    : m_vecEnemies{&m_zombieWoman, &m_wildZombie, &m_zombieMan}
+    : m_vecEnemies{&m_zombieWoman, &m_wildZombie, &m_zombieMan,
+                   &m_zombie1, &m_zombie2, &m_zombie3, &m_zombie4}
 {
 }
 
@@ -115,7 +119,7 @@ bool ZombieLand::HandleEvent()
         UpdateCamera();
     }
 
-    for (Enemy *pEnemy : m_vecEnemies)
+    for (Enemy *pEnemy : m_vecActiveEnemies)
     {
         pEnemy->Update(fDeltaTimeSeconds);
     }
@@ -154,7 +158,7 @@ void ZombieLand::OnEnter()
 
     RandomizeEnemies();
 
-    for (Enemy *pEnemy : m_vecEnemies)
+    for (Enemy *pEnemy : m_vecActiveEnemies)
     {
         pEnemy->Reset();
     }
@@ -196,7 +200,7 @@ void ZombieLand::OnDraw()
     {
         if (unLayerIndex == unCharacterLayerIndex)
         {
-            for (Enemy *pEnemy : m_vecEnemies)
+            for (Enemy *pEnemy : m_vecActiveEnemies)
             {
                 pEnemy->Draw(m_fWorldOffsetX);
             }
@@ -209,7 +213,7 @@ void ZombieLand::OnDraw()
 
     if (unCharacterLayerIndex >= m_vecTexturesBackground.size())
     {
-        for (Enemy *pEnemy : m_vecEnemies)
+        for (Enemy *pEnemy : m_vecActiveEnemies)
         {
             pEnemy->Draw(m_fWorldOffsetX);
         }
@@ -260,7 +264,7 @@ Enemy *ZombieLand::GetNearestEnemy() const
     Enemy *pNearestEnemy = nullptr;
     float fNearestDistanceSq = std::numeric_limits<float>::max();
 
-    for (Enemy *pEnemy : m_vecEnemies)
+    for (Enemy *pEnemy : m_vecActiveEnemies)
     {
         const float fDeltaX = pEnemy->GetFeetWorldX() - m_soldier.GetFeetWorldX();
         const float fDeltaY = pEnemy->GetFeetY() - m_soldier.GetFeetY();
@@ -278,9 +282,27 @@ Enemy *ZombieLand::GetNearestEnemy() const
 
 void ZombieLand::RandomizeEnemies()
 {
+    m_vecActiveEnemies.clear();
+
     if (m_vecEnemies.empty())
     {
         return;
+    }
+
+    static std::mt19937 rng(std::random_device{}());
+
+    /*Pick a random subset so a run never shows every enemy type at once*/
+    std::vector<std::size_t> vecEnemyOrder(m_vecEnemies.size());
+    std::iota(vecEnemyOrder.begin(), vecEnemyOrder.end(), 0);
+    std::shuffle(vecEnemyOrder.begin(), vecEnemyOrder.end(), rng);
+
+    const std::size_t unActiveEnemyCount =
+        std::min(g_unMaxActiveEnemies, m_vecEnemies.size());
+    m_vecActiveEnemies.reserve(unActiveEnemyCount);
+
+    for (std::size_t i = 0; i < unActiveEnemyCount; ++i)
+    {
+        m_vecActiveEnemies.push_back(m_vecEnemies[vecEnemyOrder[i]]);
     }
 
     const auto &rend = MainApp::GetInstance().ptrRend;
@@ -298,35 +320,30 @@ void ZombieLand::RandomizeEnemies()
     }
 
     const float fBandWidth =
-        (fMaxScreenX - fMinScreenX) / static_cast<float>(m_vecEnemies.size());
+        (fMaxScreenX - fMinScreenX) / static_cast<float>(unActiveEnemyCount);
 
-    static std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution<float> xDistribution(0.0f, 1.0f);
     std::uniform_real_distribution<float> yDistribution(850.0f, 1030.0f);
     std::uniform_real_distribution<float> delayDistribution(1.5f, 3.5f);
     std::uniform_real_distribution<float> speedDistribution(350.0f, 650.0f);
 
-    /*Shuffle the bands so each enemy type gets a different random slot*/
-    std::vector<std::size_t> vecBandOrder(m_vecEnemies.size());
-    std::iota(vecBandOrder.begin(), vecBandOrder.end(), 0);
-    std::shuffle(vecBandOrder.begin(), vecBandOrder.end(), rng);
-
-    for (std::size_t i = 0; i < m_vecEnemies.size(); ++i)
+    for (std::size_t i = 0; i < unActiveEnemyCount; ++i)
     {
+        Enemy *pEnemy = m_vecActiveEnemies[i];
         const float fBandStart =
-            fMinScreenX + fBandWidth * static_cast<float>(vecBandOrder[i]);
+            fMinScreenX + fBandWidth * static_cast<float>(i);
         const float fScreenX = fBandStart + fBandWidth * xDistribution(rng);
         const float fWorldX = fScreenX + m_fWorldOffsetX;
         const float fFeetY = yDistribution(rng);
         const float fSpawnDelay = delayDistribution(rng);
         const float fRunSpeed = speedDistribution(rng);
 
-        m_vecEnemies[i]->SetSpawnPosition(fWorldX, fFeetY);
-        m_vecEnemies[i]->SetSpawnDelay(fSpawnDelay);
-        m_vecEnemies[i]->SetRunSpeed(fRunSpeed);
+        pEnemy->SetSpawnPosition(fWorldX, fFeetY);
+        pEnemy->SetSpawnDelay(fSpawnDelay);
+        pEnemy->SetRunSpeed(fRunSpeed);
 
-        LOG_INFO("Zombie Land - Enemy {0} spawn: screen X {1}, feet Y {2}, speed {3}, delay {4}",
-                 i, fScreenX, fFeetY, fRunSpeed, fSpawnDelay);
+        LOG_INFO("Zombie Land - Enemy {0} \"{1}\" spawn: screen X {2}, feet Y {3}, speed {4}, delay {5}",
+                 i, pEnemy->GetDisplayName(), fScreenX, fFeetY, fRunSpeed, fSpawnDelay);
     }
 }
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <functional>
 #include <random>
 #include <utility>
@@ -15,8 +16,6 @@ namespace
 constexpr float g_fFpsIdle = 10.0f;
 constexpr float g_fFpsRun = 16.0f;
 constexpr float g_fFpsAttack = 12.0f;
-constexpr unsigned int g_unFrameWidth = 96;
-constexpr unsigned int g_unFrameHeight = 96;
 constexpr float g_fScale = 3.333333f;
 constexpr float g_fShadowScale = 0.45f;
 constexpr float g_fAttackRange = 120.0f;
@@ -26,9 +25,12 @@ constexpr float g_fMinFeetY = 850.0f;
 constexpr float g_fMaxFeetY = 1030.0f;
 }
 
-Enemy::Enemy(std::string strResourceFolder, std::string strDisplayName)
+Enemy::Enemy(std::string strResourceFolder, std::string strDisplayName,
+             unsigned int unFrameWidth, unsigned int unFrameHeight)
     : m_strResourceFolder(std::move(strResourceFolder)),
-      m_strDisplayName(std::move(strDisplayName))
+      m_strDisplayName(std::move(strDisplayName)),
+      m_unFrameWidth(std::max(1u, unFrameWidth)),
+      m_unFrameHeight(std::max(1u, unFrameHeight))
 {
 }
 
@@ -53,6 +55,11 @@ void Enemy::SetRunSpeed(float fSpeed)
     m_fRunSpeed = std::max(0.0f, fSpeed);
 }
 
+const std::string &Enemy::GetDisplayName() const
+{
+    return m_strDisplayName;
+}
+
 std::string Enemy::GetAssetPath(const std::string &strFileName) const
 {
     return "../src/resources/zombie_land/" + m_strResourceFolder + "/" + strFileName;
@@ -69,38 +76,59 @@ bool Enemy::Init()
     }
 
     if (!m_animIdle.InitSpriteSheet(GetAssetPath("Idle.png"),
-                                    g_unFrameWidth, g_unFrameHeight, g_fFpsIdle))
+                                    m_unFrameWidth, m_unFrameHeight, g_fFpsIdle))
     {
         LOG_ERROR("Enemy - Unable to load idle animation for \"{0}\" !", m_strDisplayName);
         return false;
     }
 
-    if (!m_animRun.InitSpriteSheet(GetAssetPath("Run.png"),
-                                   g_unFrameWidth, g_unFrameHeight, g_fFpsRun))
+    /*Some imported zombies only provide Walk.png; use it for movement*/
+    const std::string strRunPath = GetAssetPath("Run.png");
+    const std::string strWalkPath = GetAssetPath("Walk.png");
+    const std::string strMovementPath =
+        std::filesystem::exists(strRunPath) ? strRunPath : strWalkPath;
+
+    if (!m_animRun.InitSpriteSheet(strMovementPath,
+                                   m_unFrameWidth, m_unFrameHeight, g_fFpsRun))
     {
-        LOG_ERROR("Enemy - Unable to load run animation for \"{0}\" !", m_strDisplayName);
+        LOG_ERROR("Enemy - Unable to load movement animation for \"{0}\" !", m_strDisplayName);
         return false;
     }
 
-    if (!m_animAttack1.InitSpriteSheet(GetAssetPath("Attack_1.png"),
-                                       g_unFrameWidth, g_unFrameHeight, g_fFpsAttack))
-    {
-        LOG_ERROR("Enemy - Unable to load attack 1 animation for \"{0}\" !", m_strDisplayName);
-        return false;
-    }
+    /*Some imported zombies provide a single Attack.png instead of Attack_1..3.png*/
+    m_bSingleAttack = !std::filesystem::exists(GetAssetPath("Attack_1.png"));
 
-    if (!m_animAttack2.InitSpriteSheet(GetAssetPath("Attack_2.png"),
-                                       g_unFrameWidth, g_unFrameHeight, g_fFpsAttack))
+    if (m_bSingleAttack)
     {
-        LOG_ERROR("Enemy - Unable to load attack 2 animation for \"{0}\" !", m_strDisplayName);
-        return false;
+        if (!m_animAttack1.InitSpriteSheet(GetAssetPath("Attack.png"),
+                                           m_unFrameWidth, m_unFrameHeight, g_fFpsAttack))
+        {
+            LOG_ERROR("Enemy - Unable to load attack animation for \"{0}\" !", m_strDisplayName);
+            return false;
+        }
     }
-
-    if (!m_animAttack3.InitSpriteSheet(GetAssetPath("Attack_3.png"),
-                                       g_unFrameWidth, g_unFrameHeight, g_fFpsAttack))
+    else
     {
-        LOG_ERROR("Enemy - Unable to load attack 3 animation for \"{0}\" !", m_strDisplayName);
-        return false;
+        if (!m_animAttack1.InitSpriteSheet(GetAssetPath("Attack_1.png"),
+                                           m_unFrameWidth, m_unFrameHeight, g_fFpsAttack))
+        {
+            LOG_ERROR("Enemy - Unable to load attack 1 animation for \"{0}\" !", m_strDisplayName);
+            return false;
+        }
+
+        if (!m_animAttack2.InitSpriteSheet(GetAssetPath("Attack_2.png"),
+                                           m_unFrameWidth, m_unFrameHeight, g_fFpsAttack))
+        {
+            LOG_ERROR("Enemy - Unable to load attack 2 animation for \"{0}\" !", m_strDisplayName);
+            return false;
+        }
+
+        if (!m_animAttack3.InitSpriteSheet(GetAssetPath("Attack_3.png"),
+                                           m_unFrameWidth, m_unFrameHeight, g_fFpsAttack))
+        {
+            LOG_ERROR("Enemy - Unable to load attack 3 animation for \"{0}\" !", m_strDisplayName);
+            return false;
+        }
     }
 
     std::function<void()> onAttackEnd = [this]()
@@ -295,9 +323,16 @@ void Enemy::StartRunning()
 
 void Enemy::StartAttacking()
 {
-    static std::mt19937 rng(std::random_device{}());
-    static std::uniform_int_distribution<unsigned int> attackDistribution(0, 2);
-    m_unAttackIndex = attackDistribution(rng);
+    if (m_bSingleAttack)
+    {
+        m_unAttackIndex = 0;
+    }
+    else
+    {
+        static std::mt19937 rng(std::random_device{}());
+        static std::uniform_int_distribution<unsigned int> attackDistribution(0, 2);
+        m_unAttackIndex = attackDistribution(rng);
+    }
 
     m_animIdle.Stop();
     m_animRun.Stop();
@@ -312,6 +347,11 @@ void Enemy::StartAttacking()
 
 AnimPlayer &Enemy::GetAttackAnimation()
 {
+    if (m_bSingleAttack)
+    {
+        return m_animAttack1;
+    }
+
     switch (m_unAttackIndex)
     {
         case 1:
@@ -326,14 +366,15 @@ AnimPlayer &Enemy::GetAttackAnimation()
 void Enemy::Draw(float fWorldOffsetX)
 {
     const auto &rend = MainApp::GetInstance().ptrRend;
-    const float fFrameSize = static_cast<float>(g_unFrameWidth) * g_fScale;
+    const float fFrameWidth = static_cast<float>(m_unFrameWidth) * g_fScale;
+    const float fFrameHeight = static_cast<float>(m_unFrameHeight) * g_fScale;
     const float fFeetScreenX = m_fFeetWorldX - fWorldOffsetX;
-    const float fFrameX = fFeetScreenX - fFrameSize * 0.5f;
-    const float fFrameY = m_fFeetY - fFrameSize;
+    const float fFrameX = fFeetScreenX - fFrameWidth * 0.5f;
+    const float fFrameY = m_fFeetY - fFrameHeight;
     const float fScreenWidth = static_cast<float>(rend->SCREEN_WIDTH);
     const bool bFlipHorizontal = !m_bFacingRight;
 
-    if (fFrameX + fFrameSize < 0.0f || fFrameX > fScreenWidth)
+    if (fFrameX + fFrameWidth < 0.0f || fFrameX > fScreenWidth)
     {
         return;
     }

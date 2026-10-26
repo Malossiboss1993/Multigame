@@ -21,6 +21,9 @@ private:
 
     std::string m_strResourceFolder;
     std::string m_strDisplayName;
+    unsigned int m_unFrameWidth = 96;
+    unsigned int m_unFrameHeight = 96;
+    bool m_bSingleAttack = false;
 
     const ICharacter *m_pTarget = nullptr;
 
@@ -49,12 +52,14 @@ private:
     std::string GetAssetPath(const std::string &strFileName) const;
 
 public:
-    Enemy(std::string strResourceFolder, std::string strDisplayName);
+    Enemy(std::string strResourceFolder, std::string strDisplayName,
+          unsigned int unFrameWidth = 96, unsigned int unFrameHeight = 96);
 
     void SetTarget(const ICharacter *pTarget);
     void SetSpawnPosition(float fWorldX, float fFeetY);
     void SetSpawnDelay(float fSeconds);
     void SetRunSpeed(float fSpeed);
+    const std::string &GetDisplayName() const;
 
     bool Init() override;
     void Deinit() override;

@@ -24,7 +24,16 @@ private:
     Enemy m_zombieWoman{"zombie_woman", "Zombie Woman"};
     Enemy m_wildZombie{"wild_zombie", "Wild Zombie"};
     Enemy m_zombieMan{"zombie_man", "Zombie Man"};
+
+    /*The imported zombie_1..4 sprite sheets use 128x128 frames*/
+    Enemy m_zombie1{"zombie_1", "Zombie 1", 128, 128};
+    Enemy m_zombie2{"zombie_2", "Zombie 2", 128, 128};
+    Enemy m_zombie3{"zombie_3", "Zombie 3", 128, 128};
+    Enemy m_zombie4{"zombie_4", "Zombie 4", 128, 128};
+
+    /*All enemy types are loaded, but only a random subset is active per run*/
     std::vector<Enemy *> m_vecEnemies;
+    std::vector<Enemy *> m_vecActiveEnemies;
 
     /*Horizontal world scroll, used for the parallax backgrounds*/
     float m_fWorldOffsetX = 0.0f;
