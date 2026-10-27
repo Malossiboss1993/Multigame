@@ -18,6 +18,7 @@ enum class EAnimPlayerStates
 enum class EAnimPlayerPlayMode
 {
     ePlayOnce,
+    ePlayOnceHoldLastFrame,
     ePlayLooped,
     eTotalAnimPlayerPlayModes
 };

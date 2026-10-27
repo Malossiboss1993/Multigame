@@ -321,14 +321,14 @@ void AnimPlayer::OnTick(unsigned int unID, unsigned int unTimes)
 
         if (++m_unCurrentFrameIndex >= unTotalFrames)
         {
-            m_unCurrentFrameIndex = 0;
-
             switch (m_ePlayMode)
             {
 
             case EAnimPlayerPlayMode::ePlayOnce:
             {
                 /*Call end callback in the end of the cycle, and stop*/
+                m_unCurrentFrameIndex = 0;
+
                 if (m_endCallback)
                 {
                     m_endCallback();
@@ -339,9 +339,26 @@ void AnimPlayer::OnTick(unsigned int unID, unsigned int unTimes)
             }
             break;
 
+            case EAnimPlayerPlayMode::ePlayOnceHoldLastFrame:
+            {
+                /*Keep the final frame visible, e.g. for a corpse*/
+                m_unCurrentFrameIndex = unTotalFrames - 1;
+
+                if (m_endCallback)
+                {
+                    m_endCallback();
+                }
+
+                m_eState = EAnimPlayerStates::ePaused;
+                MainApp::GetInstance().ptrTimer->StopTimer(this, g_unTimerProcessAnimPlayer);
+            }
+            break;
+
             case EAnimPlayerPlayMode::ePlayLooped:
             {
                 /*Call end callback in the end of the cycle*/
+                m_unCurrentFrameIndex = 0;
+
                 if (m_endCallback)
                 {
                     m_endCallback();

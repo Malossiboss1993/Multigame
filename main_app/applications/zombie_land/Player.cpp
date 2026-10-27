@@ -17,10 +17,16 @@ constexpr float g_fFpsShot = 12.0f;
 constexpr float g_fFpsShotContinuous = 24.0f;
 constexpr float g_fFpsGrenade = 14.0f;
 constexpr float g_fFpsExplosion = 14.0f;
+constexpr float g_fFpsHurt = 12.0f;
+constexpr float g_fFpsDead = 10.0f;
+constexpr float g_fContinuousShotIntervalSeconds = 4.0f / 24.0f;
 constexpr float g_fMoveSpeed = 300.0f;
 constexpr float g_fVerticalMoveSpeed = 200.0f;
 constexpr float g_fRunSpeed = 600.0f;
 constexpr float g_fRunVerticalSpeed = 400.0f;
+
+/*The soldier dies after four zombie attacks (100 / 25 damage)*/
+constexpr int g_nMaxHealth = 100;
 
 /*The soldier is rooted in place while firing, so he feels focused on shooting*/
 constexpr float g_fShootingMoveSpeedMultiplier = 0.0f;
@@ -48,6 +54,8 @@ constexpr unsigned int g_unGrenadeProjectileWidth = 14;
 constexpr unsigned int g_unGrenadeProjectileHeight = 15;
 constexpr float g_fGrenadeProjectileScale = 2.8f;
 constexpr float g_fExplosionScale = 3.6f;
+/*Frames 0-4 are only the igniting spark; frame 5 is the first full fireball*/
+constexpr unsigned int g_unExplosionImpactFrame = 5;
 }
 
 bool Player::Init()
@@ -110,6 +118,20 @@ bool Player::Init()
         return false;
     }
 
+    if (!m_animHurt.InitSpriteSheet("../src/resources/zombie_land/soldier_1/Hurt.png",
+                                    g_unFrameWidth, g_unFrameHeight, g_fFpsHurt))
+    {
+        LOG_ERROR("Player - Unable to load hurt animation !");
+        return false;
+    }
+
+    if (!m_animDead.InitSpriteSheet("../src/resources/zombie_land/soldier_1/Dead.png",
+                                    g_unFrameWidth, g_unFrameHeight, g_fFpsDead))
+    {
+        LOG_ERROR("Player - Unable to load dead animation !");
+        return false;
+    }
+
     m_textureGrenadeSheet =
         Texture::CreateTexture("../src/resources/zombie_land/soldier_1/Grenade.png");
 
@@ -140,11 +162,29 @@ bool Player::Init()
     };
     m_animGrenade.SetEndCallback(onGrenadeEnd);
 
+    std::function<void(unsigned int)> onExplosionFrame = [this](unsigned int unCurrentFrame)
+    {
+        /*Match the damage to the first visible fireball frame*/
+        if (m_bExplosionActive && !m_bExplosionImpactApplied &&
+            unCurrentFrame >= g_unExplosionImpactFrame)
+        {
+            m_bExplosionImpactPending = true;
+            m_bExplosionImpactApplied = true;
+        }
+    };
+    m_animExplosion.SetFrameCallback(onExplosionFrame);
+
     std::function<void()> onExplosionEnd = [this]()
     {
         m_bExplosionActive = false;
     };
     m_animExplosion.SetEndCallback(onExplosionEnd);
+
+    std::function<void()> onHurtEnd = [this]()
+    {
+        m_bHurt = false;
+    };
+    m_animHurt.SetEndCallback(onHurtEnd);
 
     LOG_INFO("Player - Initialized ...");
     return true;
@@ -159,6 +199,8 @@ void Player::Deinit()
     m_animShotContinuous.Deinit();
     m_animGrenade.Deinit();
     m_animExplosion.Deinit();
+    m_animHurt.Deinit();
+    m_animDead.Deinit();
 
     if (m_textureShadow)
     {
@@ -184,6 +226,12 @@ void Player::Reset()
     m_bContinuousShooting = false;
     m_bShootKeyWasDown = false;
     m_nHorizontalDirection = 0;
+    m_nHealth = g_nMaxHealth;
+    m_nMaxHealth = g_nMaxHealth;
+    m_bHurt = false;
+    m_bDead = false;
+    m_unPendingShotHits = 0;
+    m_fContinuousShotTimer = 0.0f;
 
     m_bGrenadeKeyWasDown = false;
     m_bGrenadeHeld = false;
@@ -191,6 +239,8 @@ void Player::Reset()
     m_bGrenadeThrowing = false;
     m_bGrenadeInFlight = false;
     m_bExplosionActive = false;
+    m_bExplosionImpactPending = false;
+    m_bExplosionImpactApplied = false;
     m_fGrenadeProjectileElapsed = 0.0f;
 
     m_animWalk.Stop();
@@ -199,6 +249,8 @@ void Player::Reset()
     m_animShotContinuous.Stop();
     m_animGrenade.Stop();
     m_animExplosion.Stop();
+    m_animHurt.Stop();
+    m_animDead.Stop();
     m_animIdle.Start(g_fFpsIdle, EAnimPlayerPlayMode::ePlayLooped);
 }
 
@@ -210,6 +262,9 @@ void Player::Stop()
     m_bContinuousShooting = false;
     m_bShootKeyWasDown = false;
     m_nHorizontalDirection = 0;
+    m_bHurt = false;
+    m_unPendingShotHits = 0;
+    m_fContinuousShotTimer = 0.0f;
 
     m_bGrenadeKeyWasDown = false;
     m_bGrenadeHeld = false;
@@ -217,6 +272,8 @@ void Player::Stop()
     m_bGrenadeThrowing = false;
     m_bGrenadeInFlight = false;
     m_bExplosionActive = false;
+    m_bExplosionImpactPending = false;
+    m_bExplosionImpactApplied = false;
     m_fGrenadeProjectileElapsed = 0.0f;
 
     m_animIdle.Stop();
@@ -226,12 +283,19 @@ void Player::Stop()
     m_animShotContinuous.Stop();
     m_animGrenade.Stop();
     m_animExplosion.Stop();
+    m_animHurt.Stop();
+    m_animDead.Stop();
 }
 
 void Player::Update(float fDeltaTimeSeconds)
 {
+    if (m_bDead)
+    {
+        return;
+    }
+
     UpdateGrenadeInput();
-    UpdateShooting();
+    UpdateShooting(fDeltaTimeSeconds);
     UpdateMovement(fDeltaTimeSeconds);
     UpdateGrenade(fDeltaTimeSeconds);
 }
@@ -292,7 +356,7 @@ void Player::UpdateGrenadeInput()
     m_bGrenadeKeyWasDown = bGrenadeKeyDown;
 }
 
-void Player::UpdateShooting()
+void Player::UpdateShooting(float fDeltaTimeSeconds)
 {
     const auto &rend = MainApp::GetInstance().ptrRend;
     const bool bShootKeyDown =
@@ -304,6 +368,14 @@ void Player::UpdateShooting()
 
     if (bGrenadeBusy)
     {
+        if (m_bContinuousShooting)
+        {
+            m_animShotContinuous.Stop();
+            m_bShooting = false;
+            m_bContinuousShooting = false;
+            m_fContinuousShotTimer = 0.0f;
+        }
+
         m_bShootKeyWasDown = bShootKeyDown;
         return;
     }
@@ -314,6 +386,7 @@ void Player::UpdateShooting()
         m_animShotContinuous.Stop();
         m_bShooting = false;
         m_bContinuousShooting = false;
+        m_fContinuousShotTimer = 0.0f;
     }
 
     if (bContinuousShootRequested && !m_bContinuousShooting)
@@ -322,12 +395,26 @@ void Player::UpdateShooting()
         m_animShot.Stop();
         m_bShooting = true;
         m_bContinuousShooting = true;
+        m_fContinuousShotTimer = 0.0f;
+        ++m_unPendingShotHits;
         m_animShotContinuous.Start(g_fFpsShotContinuous,
                                    EAnimPlayerPlayMode::ePlayLooped);
+    }
+    else if (bContinuousShootRequested)
+    {
+        /*One bullet per Shot_2 animation cycle*/
+        m_fContinuousShotTimer += fDeltaTimeSeconds;
+
+        while (m_fContinuousShotTimer >= g_fContinuousShotIntervalSeconds)
+        {
+            m_fContinuousShotTimer -= g_fContinuousShotIntervalSeconds;
+            ++m_unPendingShotHits;
+        }
     }
     else if (bShootKeyDown && !m_bShootKeyWasDown && !m_bShooting)
     {
         m_bShooting = true;
+        ++m_unPendingShotHits;
         m_animShot.Start(g_fFpsShot, EAnimPlayerPlayMode::ePlayOnce);
     }
 
@@ -340,6 +427,7 @@ void Player::CancelShooting()
     m_animShotContinuous.Stop();
     m_bShooting = false;
     m_bContinuousShooting = false;
+    m_fContinuousShotTimer = 0.0f;
 }
 
 void Player::UpdateMovement(float fDeltaTimeSeconds)
@@ -481,6 +569,8 @@ void Player::StartExplosion()
 {
     m_bGrenadeInFlight = false;
     m_bExplosionActive = true;
+    m_bExplosionImpactPending = false;
+    m_bExplosionImpactApplied = false;
     m_fExplosionWorldX = m_fGrenadeTargetWorldX;
     m_fExplosionFeetY = m_fGrenadeTargetFeetY;
 
@@ -510,6 +600,8 @@ void Player::ThrowGrenadeAt(float fTargetWorldX, float fTargetFeetY)
     m_bGrenadeThrowing = true;
     m_bGrenadeInFlight = false;
     m_bExplosionActive = false;
+    m_bExplosionImpactPending = false;
+    m_bExplosionImpactApplied = false;
     m_fGrenadeProjectileElapsed = 0.0f;
     m_fGrenadeTargetWorldX = fTargetWorldX;
     m_fGrenadeTargetFeetY = fTargetFeetY;
@@ -524,6 +616,94 @@ void Player::ThrowGrenadeAt(float fTargetWorldX, float fTargetFeetY)
 
     LOG_INFO("Player - Throwing grenade at world X {0}, feet Y {1}",
              fTargetWorldX, fTargetFeetY);
+}
+
+void Player::TakeDamage(int nDamage)
+{
+    if (m_bDead || nDamage <= 0)
+    {
+        return;
+    }
+
+    m_nHealth = std::max(0, m_nHealth - nDamage);
+
+    if (m_nHealth <= 0)
+    {
+        m_bDead = true;
+        m_bHurt = false;
+        m_bMoving = false;
+        m_bRunning = false;
+        m_bShooting = false;
+        m_bContinuousShooting = false;
+        m_bShootKeyWasDown = false;
+        m_nHorizontalDirection = 0;
+        m_unPendingShotHits = 0;
+        m_fContinuousShotTimer = 0.0f;
+        m_bGrenadeKeyWasDown = false;
+        m_bGrenadeHeld = false;
+        m_bGrenadeThrowRequested = false;
+        m_bGrenadeThrowing = false;
+        m_bGrenadeInFlight = false;
+        m_bExplosionActive = false;
+        m_bExplosionImpactPending = false;
+        m_bExplosionImpactApplied = false;
+
+        m_animIdle.Stop();
+        m_animWalk.Stop();
+        m_animRun.Stop();
+        m_animShot.Stop();
+        m_animShotContinuous.Stop();
+        m_animGrenade.Stop();
+        m_animExplosion.Stop();
+        m_animHurt.Stop();
+        m_animDead.Stop();
+        m_animDead.Start(g_fFpsDead, EAnimPlayerPlayMode::ePlayOnceHoldLastFrame);
+
+        LOG_INFO("Player - Died after taking {0} damage", nDamage);
+        return;
+    }
+
+    m_bHurt = true;
+    m_animHurt.Stop();
+    m_animHurt.Start(g_fFpsHurt, EAnimPlayerPlayMode::ePlayOnce);
+
+    LOG_INFO("Player - Hurt for {0} damage, health {1}/{2}",
+             nDamage, m_nHealth, m_nMaxHealth);
+}
+
+unsigned int Player::ConsumeShotHits()
+{
+    const unsigned int unShotHits = m_unPendingShotHits;
+    m_unPendingShotHits = 0;
+    return unShotHits;
+}
+
+bool Player::ConsumeExplosionImpact(float &fWorldX, float &fFeetY)
+{
+    if (!m_bExplosionImpactPending)
+    {
+        return false;
+    }
+
+    m_bExplosionImpactPending = false;
+    fWorldX = m_fExplosionWorldX;
+    fFeetY = m_fExplosionFeetY;
+    return true;
+}
+
+bool Player::IsDead() const
+{
+    return m_bDead;
+}
+
+int Player::GetHealth() const
+{
+    return m_nHealth;
+}
+
+int Player::GetMaxHealth() const
+{
+    return m_nMaxHealth;
 }
 
 void Player::Draw(float fWorldOffsetX)
@@ -542,7 +722,15 @@ void Player::Draw(float fWorldOffsetX)
     {
         DrawShadow(fScreenX, m_fFeetY);
 
-        if (m_bGrenadeHeld)
+        if (m_bDead)
+        {
+            m_animDead.Draw(fFrameX, fFrameY, g_fScale, bFlipHorizontal);
+        }
+        else if (m_bHurt)
+        {
+            m_animHurt.Draw(fFrameX, fFrameY, g_fScale, bFlipHorizontal);
+        }
+        else if (m_bGrenadeHeld)
         {
             DrawGrenadeHeld(fFrameX, fFrameY, bFlipHorizontal);
         }

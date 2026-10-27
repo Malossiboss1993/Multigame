@@ -19,6 +19,12 @@ private:
     bool m_bContinuousShooting = false;
     bool m_bShootKeyWasDown = false;
     int m_nHorizontalDirection = 0;
+    int m_nHealth = 100;
+    int m_nMaxHealth = 100;
+    bool m_bHurt = false;
+    bool m_bDead = false;
+    unsigned int m_unPendingShotHits = 0;
+    float m_fContinuousShotTimer = 0.0f;
 
     AnimPlayer m_animIdle;
     AnimPlayer m_animWalk;
@@ -27,6 +33,8 @@ private:
     AnimPlayer m_animShotContinuous;
     AnimPlayer m_animGrenade;
     AnimPlayer m_animExplosion;
+    AnimPlayer m_animHurt;
+    AnimPlayer m_animDead;
     std::shared_ptr<Texture> m_textureShadow;
     std::shared_ptr<Texture> m_textureGrenadeSheet;
 
@@ -36,6 +44,8 @@ private:
     bool m_bGrenadeThrowing = false;
     bool m_bGrenadeInFlight = false;
     bool m_bExplosionActive = false;
+    bool m_bExplosionImpactPending = false;
+    bool m_bExplosionImpactApplied = false;
     float m_fGrenadeStartWorldX = 0.0f;
     float m_fGrenadeStartWorldY = 0.0f;
     float m_fGrenadeTargetWorldX = 0.0f;
@@ -51,7 +61,7 @@ private:
     bool IsGrenadeActionInProgress() const;
     void UpdateGrenadeInput();
     void UpdateGrenade(float fDeltaTimeSeconds);
-    void UpdateShooting();
+    void UpdateShooting(float fDeltaTimeSeconds);
     void UpdateMovement(float fDeltaTimeSeconds);
     void CancelShooting();
     void StartGrenadeProjectile();
@@ -73,6 +83,14 @@ public:
     /*Zombie Land asks the player to throw after the Ctrl key is released*/
     bool ConsumeGrenadeThrowRequest();
     void ThrowGrenadeAt(float fTargetWorldX, float fTargetFeetY);
+
+    /*Combat hooks used by Zombie Land*/
+    void TakeDamage(int nDamage);
+    unsigned int ConsumeShotHits();
+    bool ConsumeExplosionImpact(float &fWorldX, float &fFeetY);
+    bool IsDead() const;
+    int GetHealth() const;
+    int GetMaxHealth() const;
 
     float GetFeetWorldX() const override;
     float GetFeetY() const override;
