@@ -19,8 +19,9 @@ private:
     bool m_bContinuousShooting = false;
     bool m_bShootKeyWasDown = false;
     int m_nHorizontalDirection = 0;
-    int m_nHealth = 100;
-    int m_nMaxHealth = 100;
+    /*Three hearts; each zombie hit removes a quarter heart*/
+    float m_fHealth = 3.0f;
+    float m_fMaxHealth = 3.0f;
     bool m_bHurt = false;
     bool m_bDead = false;
     unsigned int m_unPendingShotHits = 0;
@@ -73,6 +74,7 @@ public:
     bool Init() override;
     void Deinit() override;
     void Reset() override;
+    void Respawn();
     void Stop() override;
     void Update(float fDeltaTimeSeconds) override;
     void Draw(float fWorldOffsetX) override;
@@ -85,12 +87,12 @@ public:
     void ThrowGrenadeAt(float fTargetWorldX, float fTargetFeetY);
 
     /*Combat hooks used by Zombie Land*/
-    void TakeDamage(int nDamage);
+    void TakeDamage(float fDamage);
     unsigned int ConsumeShotHits();
     bool ConsumeExplosionImpact(float &fWorldX, float &fFeetY);
     bool IsDead() const;
-    int GetHealth() const;
-    int GetMaxHealth() const;
+    float GetHealth() const;
+    float GetMaxHealth() const;
 
     float GetFeetWorldX() const override;
     float GetFeetY() const override;

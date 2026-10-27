@@ -34,13 +34,15 @@ constexpr std::size_t g_unBackgroundParallaxFactorsCount =
 /*Draw the characters behind the foreground cactus layer*/
 constexpr std::size_t g_unCharacterBackgroundLayerIndex = 4;
 
-/*Cap the number of enemies that can appear in one run*/
-constexpr std::size_t g_unMaxActiveEnemies = 4;
+/*Each wave gets a random number of active enemies within this range*/
+constexpr std::size_t g_unMinActiveEnemies = 3;
+constexpr std::size_t g_unMaxActiveEnemies = 10;
 
 /*Combat tuning*/
 constexpr int g_nShotDamage = 30;
 constexpr int g_nGrenadeDamage = 999;
-constexpr int g_nZombieAttackDamage = 25;
+/*Each zombie attack removes one quarter of a heart*/
+constexpr float g_fZombieAttackDamage = 0.25f;
 constexpr float g_fShotRange = 1500.0f;
 constexpr float g_fShotVerticalTolerance = 100.0f;
 constexpr float g_fGrenadeDamageRadiusX = 260.0f;
@@ -53,12 +55,23 @@ constexpr float g_fBloodGravity = 1400.0f;
 constexpr float g_fBloodSplatLifeSeconds = 4.5f;
 constexpr float g_fBloodSplatFadeSeconds = 1.2f;
 
+/*HUD hearts*/
+constexpr float g_fHeartStartX = 34.0f;
+constexpr float g_fHeartStartY = 30.0f;
+constexpr float g_fHeartSpacing = 10.0f;
+constexpr float g_fHeartDrainSpeed = 2.0f;
+
+/*Pause after a heart-empty death, then a short protected window after respawn*/
+constexpr float g_fRespawnDelaySeconds = 1.2f;
+constexpr float g_fRespawnInvulnerabilitySeconds = 1.5f;
+
 /*How far the soldier must advance after clearing a wave before the next one starts*/
 constexpr float g_fNextWaveAdvanceDistance = 400.0f;
 
 ZombieLand::ZombieLand()
     : m_vecEnemies{&m_zombieWoman, &m_wildZombie, &m_zombieMan,
-                   &m_zombie1, &m_zombie2, &m_zombie3, &m_zombie4}
+                   &m_zombie1, &m_zombie2, &m_zombie3, &m_zombie4,
+                   &m_zombieWoman2, &m_zombieMan2, &m_zombie1Extra}
 {
 }
 
@@ -101,6 +114,18 @@ bool ZombieLand::Init()
         return false;
     }
 
+    m_textureHeartFull =
+        Texture::CreateTexture("../src/resources/zombie_land/heart_full.png");
+    m_textureHeartEmpty =
+        Texture::CreateTexture("../src/resources/zombie_land/heart_empty.png");
+
+    if (!m_textureHeartFull || !m_textureHeartFull->Load() ||
+        !m_textureHeartEmpty || !m_textureHeartEmpty->Load())
+    {
+        LOG_ERROR("Zombie Land - Unable to load heart textures !");
+        return false;
+    }
+
     if (!m_soldier.Init())
     {
         LOG_ERROR("Zombie Land - Unable to initialize player !");
@@ -130,6 +155,18 @@ bool ZombieLand::Deinit()
     {
         m_textureBloodParticle->DeleteTexture();
         m_textureBloodParticle.reset();
+    }
+
+    if (m_textureHeartFull)
+    {
+        m_textureHeartFull->DeleteTexture();
+        m_textureHeartFull.reset();
+    }
+
+    if (m_textureHeartEmpty)
+    {
+        m_textureHeartEmpty->DeleteTexture();
+        m_textureHeartEmpty.reset();
     }
 
     m_soldier.Deinit();
@@ -188,11 +225,12 @@ bool ZombieLand::HandleEvent()
                 std::fabs(pEnemy->GetFeetY() - m_soldier.GetFeetY());
 
             if (fDeltaX <= g_fZombieAttackHitRangeX &&
-                fDeltaY <= g_fZombieAttackHitRangeY)
+                fDeltaY <= g_fZombieAttackHitRangeY &&
+                m_fRespawnInvulnerabilitySeconds <= 0.0f)
             {
                 LOG_INFO("Zombie Land - \"{0}\" hit the soldier",
                          pEnemy->GetDisplayName());
-                m_soldier.TakeDamage(g_nZombieAttackDamage);
+                m_soldier.TakeDamage(g_fZombieAttackDamage);
             }
 
             if (m_soldier.IsDead())
@@ -214,6 +252,8 @@ bool ZombieLand::HandleEvent()
     }
 
     UpdateBloodEffects(fDeltaTimeSeconds);
+    UpdateHealthHearts(fDeltaTimeSeconds);
+    UpdateSoldierRespawn(fDeltaTimeSeconds);
 
     if (!m_soldier.IsDead() && m_soldier.ConsumeGrenadeThrowRequest())
     {
@@ -249,10 +289,15 @@ void ZombieLand::OnEnter()
 
     m_soldier.Reset();
     ClearBloodEffects();
+    ResetHealthHearts();
 
     m_unWaveNumber = 1;
     m_bWaitingForNextWave = false;
     m_fWaveClearSoldierX = 0.0f;
+    m_bRespawnPending = false;
+    m_fRespawnTimer = 0.0f;
+    m_fRespawnInvulnerabilitySeconds = 0.0f;
+    m_bGameOver = false;
 
     RandomizeEnemies(false);
 
@@ -334,6 +379,9 @@ void ZombieLand::OnDraw()
 
     /*Draw Panel, including the Home button used to exit*/
     MainApp::GetInstance().ptrPanel->OnDraw();
+
+    /*HUD hearts are drawn last so the panel cannot cover them*/
+    DrawHealthHearts();
 }
 
 void ZombieLand::UpdateCamera()
@@ -691,6 +739,135 @@ void ZombieLand::ClearBloodEffects()
     m_vecBloodSplats.clear();
 }
 
+void ZombieLand::UpdateSoldierRespawn(float fDeltaTimeSeconds)
+{
+    if (!m_soldier.IsDead())
+    {
+        m_fRespawnInvulnerabilitySeconds =
+            std::max(0.0f, m_fRespawnInvulnerabilitySeconds - fDeltaTimeSeconds);
+        return;
+    }
+
+    /*The final heart ends the run instead of bringing the soldier back*/
+    if (m_soldier.GetHealth() <= 0.0f)
+    {
+        if (!m_bGameOver)
+        {
+            m_bGameOver = true;
+            LOG_INFO("Zombie Land - All hearts are empty, game over");
+        }
+
+        return;
+    }
+
+    if (!m_bRespawnPending)
+    {
+        m_bRespawnPending = true;
+        m_fRespawnTimer = g_fRespawnDelaySeconds;
+        LOG_INFO("Zombie Land - Heart emptied, waiting to respawn the soldier");
+        return;
+    }
+
+    m_fRespawnTimer -= fDeltaTimeSeconds;
+
+    if (m_fRespawnTimer > 0.0f)
+    {
+        return;
+    }
+
+    m_soldier.Respawn();
+    m_bRespawnPending = false;
+    m_fRespawnInvulnerabilitySeconds = g_fRespawnInvulnerabilitySeconds;
+
+    LOG_INFO("Zombie Land - Soldier respawned, health {0}/{1}",
+             m_soldier.GetHealth(), m_soldier.GetMaxHealth());
+}
+
+float ZombieLand::GetHeartTargetFill(std::size_t unHeartIndex) const
+{
+    const float fMaxHealth = static_cast<float>(g_unSoldierHeartCount);
+    const float fHealth =
+        std::clamp(m_soldier.GetHealth(), 0.0f, fMaxHealth);
+    /*The rightmost heart is the active one, matching the existing HUD order*/
+    return std::clamp(
+        fHealth - static_cast<float>(unHeartIndex), 0.0f, 1.0f);
+}
+
+void ZombieLand::UpdateHealthHearts(float fDeltaTimeSeconds)
+{
+    const float fMaxChange = g_fHeartDrainSpeed * fDeltaTimeSeconds;
+
+    for (std::size_t i = 0; i < g_unSoldierHeartCount; ++i)
+    {
+        const float fTargetFill = GetHeartTargetFill(i);
+        float &fFill = m_arrHeartFill[i];
+
+        if (fFill < fTargetFill)
+        {
+            fFill = std::min(fTargetFill, fFill + fMaxChange);
+        }
+        else
+        {
+            fFill = std::max(fTargetFill, fFill - fMaxChange);
+        }
+    }
+}
+
+void ZombieLand::DrawHealthHearts()
+{
+    if (!m_textureHeartFull || !m_textureHeartEmpty)
+    {
+        return;
+    }
+
+    const auto &rend = MainApp::GetInstance().ptrRend;
+    rend->UseShaderPicture();
+
+    const float fHeartWidth =
+        static_cast<float>(m_textureHeartFull->GetWidth());
+    const float fHeartHeight =
+        static_cast<float>(m_textureHeartFull->GetHeight());
+    const unsigned int unHeartWidth =
+        static_cast<unsigned int>(m_textureHeartFull->GetWidth());
+    const unsigned int unHeartHeight =
+        static_cast<unsigned int>(m_textureHeartFull->GetHeight());
+    const float fHeartStep = fHeartWidth + g_fHeartSpacing;
+
+    for (std::size_t i = 0; i < g_unSoldierHeartCount; ++i)
+    {
+        const float fX = g_fHeartStartX + fHeartStep * static_cast<float>(i);
+
+        /*The empty frame shows the whole outline; the red frame is clipped
+          vertically so the heart drains from the top down*/
+        rend->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+        rend->DrawPictureScaled(m_textureHeartEmpty, fX, g_fHeartStartY, 1.0f);
+
+        if (m_arrHeartFill[i] > 0.001f)
+        {
+            const int nFillHeight = static_cast<int>(
+                std::lround(fHeartHeight * m_arrHeartFill[i]));
+            const unsigned int unFillHeight = static_cast<unsigned int>(
+                std::clamp(nFillHeight, 1, static_cast<int>(fHeartHeight)));
+            const unsigned int unSourceY = unHeartHeight - unFillHeight;
+            const float fFillY = g_fHeartStartY + fHeartHeight -
+                                 static_cast<float>(unFillHeight);
+
+            rend->DrawPicturePart(m_textureHeartFull, fX, fFillY,
+                                  0, unSourceY, unHeartWidth, unFillHeight, 1.0f);
+        }
+    }
+
+    rend->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+}
+
+void ZombieLand::ResetHealthHearts()
+{
+    for (std::size_t i = 0; i < g_unSoldierHeartCount; ++i)
+    {
+        m_arrHeartFill[i] = GetHeartTargetFill(i);
+    }
+}
+
 void ZombieLand::RandomizeEnemies(bool bSpawnAheadOfPlayer)
 {
     m_vecActiveEnemies.clear();
@@ -702,13 +879,23 @@ void ZombieLand::RandomizeEnemies(bool bSpawnAheadOfPlayer)
 
     static std::mt19937 rng(std::random_device{}());
 
-    /*Pick a random subset so a wave never shows every enemy type at once*/
+    /*Choose a random wave size, clamped to the loaded enemy instances*/
+    const std::size_t unMinActiveEnemyCount =
+        std::min(g_unMinActiveEnemies, m_vecEnemies.size());
+    const std::size_t unMaxActiveEnemyCount =
+        std::min(g_unMaxActiveEnemies, m_vecEnemies.size());
+    std::uniform_int_distribution<std::size_t> activeEnemyCountDistribution(
+        unMinActiveEnemyCount, unMaxActiveEnemyCount);
+    const std::size_t unActiveEnemyCount =
+        activeEnemyCountDistribution(rng);
+
+    LOG_INFO("Zombie Land - Wave {0} active enemy count: {1}",
+             m_unWaveNumber, unActiveEnemyCount);
+
+    /*Pick the enemy instances that will appear in this wave*/
     std::vector<std::size_t> vecEnemyOrder(m_vecEnemies.size());
     std::iota(vecEnemyOrder.begin(), vecEnemyOrder.end(), 0);
     std::shuffle(vecEnemyOrder.begin(), vecEnemyOrder.end(), rng);
-
-    const std::size_t unActiveEnemyCount =
-        std::min(g_unMaxActiveEnemies, m_vecEnemies.size());
     m_vecActiveEnemies.reserve(unActiveEnemyCount);
 
     for (std::size_t i = 0; i < unActiveEnemyCount; ++i)
@@ -729,7 +916,10 @@ void ZombieLand::RandomizeEnemies(bool bSpawnAheadOfPlayer)
         /*New waves start fully past the right edge so they are not visible at
           the spawn point. The margin also keeps the widest sprite off-screen*/
         constexpr float fOffscreenSpawnMargin = 260.0f;
-        constexpr float fOffscreenSpawnDepth = 520.0f;
+        /*Keep roughly even spacing for larger waves*/
+        const float fOffscreenSpawnDepth =
+            std::max(520.0f,
+                     static_cast<float>(unActiveEnemyCount) * 90.0f);
 
         fMinScreenX = fScreenWidth + fOffscreenSpawnMargin;
         fMaxScreenX = fMinScreenX + fOffscreenSpawnDepth;

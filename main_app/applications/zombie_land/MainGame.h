@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -22,6 +23,12 @@ private:
 
     /*Small soft particle used for blood spray and ground drops*/
     std::shared_ptr<Texture> m_textureBloodParticle;
+
+    /*HUD heart frames and the smoothed fill state of each heart*/
+    static constexpr std::size_t g_unSoldierHeartCount = 3;
+    std::shared_ptr<Texture> m_textureHeartFull;
+    std::shared_ptr<Texture> m_textureHeartEmpty;
+    std::array<float, g_unSoldierHeartCount> m_arrHeartFill = {1.0f, 1.0f, 1.0f};
 
     struct BloodParticle
     {
@@ -59,7 +66,12 @@ private:
     Enemy m_zombie3{"zombie_3", "Zombie 3", 128, 128};
     Enemy m_zombie4{"zombie_4", "Zombie 4", 128, 128};
 
-    /*All enemy types are loaded, but only a random subset is active per run*/
+    /*Extra instances of the existing types let a wave contain up to ten zombies*/
+    Enemy m_zombieWoman2{"zombie_woman", "Zombie Woman 2"};
+    Enemy m_zombieMan2{"zombie_man", "Zombie Man 2"};
+    Enemy m_zombie1Extra{"zombie_1", "Zombie 1 Extra", 128, 128};
+
+    /*All enemy instances are loaded, but only a random subset is active per wave*/
     std::vector<Enemy *> m_vecEnemies;
     std::vector<Enemy *> m_vecActiveEnemies;
 
@@ -70,6 +82,12 @@ private:
     bool m_bWaitingForNextWave = false;
     float m_fWaveClearSoldierX = 0.0f;
     unsigned int m_unWaveNumber = 1;
+
+    /*A death after the first two hearts brings the soldier back; the last ends the run*/
+    bool m_bRespawnPending = false;
+    float m_fRespawnTimer = 0.0f;
+    float m_fRespawnInvulnerabilitySeconds = 0.0f;
+    bool m_bGameOver = false;
 
     void UpdateCamera();
     void RandomizeEnemies(bool bSpawnAheadOfPlayer);
@@ -85,6 +103,11 @@ private:
     void DrawGroundBlood();
     void DrawAirborneBlood();
     void ClearBloodEffects();
+    void UpdateSoldierRespawn(float fDeltaTimeSeconds);
+    float GetHeartTargetFill(std::size_t unHeartIndex) const;
+    void UpdateHealthHearts(float fDeltaTimeSeconds);
+    void DrawHealthHearts();
+    void ResetHealthHearts();
     void DrawBackgroundLayer(std::size_t unLayerIndex, float fScaleFactor);
 
 public:

@@ -25,8 +25,8 @@ constexpr float g_fVerticalMoveSpeed = 200.0f;
 constexpr float g_fRunSpeed = 600.0f;
 constexpr float g_fRunVerticalSpeed = 400.0f;
 
-/*The soldier dies after four zombie attacks (100 / 25 damage)*/
-constexpr int g_nMaxHealth = 100;
+/*Three hearts, each zombie hit removes a quarter heart*/
+constexpr float g_fMaxHealth = 3.0f;
 
 /*The soldier is rooted in place while firing, so he feels focused on shooting*/
 constexpr float g_fShootingMoveSpeedMultiplier = 0.0f;
@@ -226,8 +226,8 @@ void Player::Reset()
     m_bContinuousShooting = false;
     m_bShootKeyWasDown = false;
     m_nHorizontalDirection = 0;
-    m_nHealth = g_nMaxHealth;
-    m_nMaxHealth = g_nMaxHealth;
+    m_fHealth = g_fMaxHealth;
+    m_fMaxHealth = g_fMaxHealth;
     m_bHurt = false;
     m_bDead = false;
     m_unPendingShotHits = 0;
@@ -252,6 +252,14 @@ void Player::Reset()
     m_animHurt.Stop();
     m_animDead.Stop();
     m_animIdle.Start(g_fFpsIdle, EAnimPlayerPlayMode::ePlayLooped);
+}
+
+void Player::Respawn()
+{
+    /*A heart-empty death keeps the remaining heart progress*/
+    const float fHealth = m_fHealth;
+    Reset();
+    m_fHealth = fHealth;
 }
 
 void Player::Stop()
@@ -618,16 +626,19 @@ void Player::ThrowGrenadeAt(float fTargetWorldX, float fTargetFeetY)
              fTargetWorldX, fTargetFeetY);
 }
 
-void Player::TakeDamage(int nDamage)
+void Player::TakeDamage(float fDamage)
 {
-    if (m_bDead || nDamage <= 0)
+    if (m_bDead || fDamage <= 0.0f)
     {
         return;
     }
 
-    m_nHealth = std::max(0, m_nHealth - nDamage);
+    m_fHealth = std::max(0.0f, m_fHealth - fDamage);
 
-    if (m_nHealth <= 0)
+    /*Each emptied heart kills the soldier, even when later hearts remain*/
+    const bool bHeartEmptied =
+        std::fabs(m_fHealth - std::round(m_fHealth)) < 0.0001f;
+    if (m_fHealth <= 0.0f || bHeartEmptied)
     {
         m_bDead = true;
         m_bHurt = false;
@@ -659,7 +670,8 @@ void Player::TakeDamage(int nDamage)
         m_animDead.Stop();
         m_animDead.Start(g_fFpsDead, EAnimPlayerPlayMode::ePlayOnceHoldLastFrame);
 
-        LOG_INFO("Player - Died after taking {0} damage", nDamage);
+        LOG_INFO("Player - Heart emptied after taking {0} damage, health {1}/{2}",
+                 fDamage, m_fHealth, m_fMaxHealth);
         return;
     }
 
@@ -668,7 +680,7 @@ void Player::TakeDamage(int nDamage)
     m_animHurt.Start(g_fFpsHurt, EAnimPlayerPlayMode::ePlayOnce);
 
     LOG_INFO("Player - Hurt for {0} damage, health {1}/{2}",
-             nDamage, m_nHealth, m_nMaxHealth);
+             fDamage, m_fHealth, m_fMaxHealth);
 }
 
 unsigned int Player::ConsumeShotHits()
@@ -696,14 +708,14 @@ bool Player::IsDead() const
     return m_bDead;
 }
 
-int Player::GetHealth() const
+float Player::GetHealth() const
 {
-    return m_nHealth;
+    return m_fHealth;
 }
 
-int Player::GetMaxHealth() const
+float Player::GetMaxHealth() const
 {
-    return m_nMaxHealth;
+    return m_fMaxHealth;
 }
 
 void Player::Draw(float fWorldOffsetX)
