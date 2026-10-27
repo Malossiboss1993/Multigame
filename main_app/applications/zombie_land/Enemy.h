@@ -75,7 +75,8 @@ public:
     void SetSpawnDelay(float fSeconds);
     void SetRunSpeed(float fSpeed);
     const std::string &GetDisplayName() const;
-    void TakeDamage(int nDamage, bool bLaunchCorpse = false);
+    void TakeDamage(int nDamage, bool bLaunchCorpse = false,
+                    float fWorldOffsetX = 0.0f);
     bool ConsumeAttackHit();
     bool IsDead() const;
     bool IsCorpseFadedOut() const;

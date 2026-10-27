@@ -91,6 +91,8 @@ public:
     unsigned int ConsumeShotHits();
     bool ConsumeExplosionImpact(float &fWorldX, float &fFeetY);
     bool IsDead() const;
+    bool IsShooting() const;
+    void FaceTowardsWorldX(float fWorldX);
     float GetHealth() const;
     float GetMaxHealth() const;
 

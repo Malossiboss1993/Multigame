@@ -54,6 +54,37 @@ private:
     std::vector<BloodParticle> m_vecBloodParticles;
     std::vector<BloodSplat> m_vecBloodSplats;
 
+    enum class EEnvironmentAsset : std::size_t
+    {
+        eDeadTree1,
+        eDeadTree2,
+        eBush1,
+        eBush2,
+        eGrass1,
+        eGrass2,
+        eGrass3,
+        eSkeletonRibcage,
+        eSkeletonSkull,
+        eSkeletonSpine,
+        eSkeletonHand,
+        eCount
+    };
+
+    struct EnvironmentDecoration
+    {
+        std::shared_ptr<Texture> texture;
+        float fWorldX = 0.0f;
+        float fGroundY = 0.0f;
+        float fScale = 1.0f;
+    };
+
+    static constexpr std::size_t g_unEnvironmentAssetCount =
+        static_cast<std::size_t>(EEnvironmentAsset::eCount);
+    std::array<std::shared_ptr<Texture>, g_unEnvironmentAssetCount>
+        m_arrEnvironmentTextures;
+    std::vector<EnvironmentDecoration> m_vecGroundDecorations;
+    std::vector<EnvironmentDecoration> m_vecForegroundDecorations;
+
     Player m_soldier;
     Enemy m_zombieWoman{"zombie_woman", "Zombie Woman"};
     /*The crawling wild zombie keeps its head much lower than the standing types*/
@@ -95,14 +126,16 @@ private:
     bool AreAllActiveEnemiesDead() const;
     bool AreAllCorpsesFadedOut() const;
     Enemy *GetNearestEnemy() const;
-    Enemy *GetEnemyInShotLine() const;
-    void DamageEnemyInShotLine();
+    Enemy *GetNearestShootableEnemy() const;
+    void DamageNearestEnemy();
     void DamageEnemiesInExplosion(float fWorldX, float fFeetY);
     void SpawnBloodAt(float fWorldX, float fHeadWorldY, float fGroundY);
     void UpdateBloodEffects(float fDeltaTimeSeconds);
     void DrawGroundBlood();
     void DrawAirborneBlood();
     void ClearBloodEffects();
+    void CreateEnvironmentDecorations();
+    void DrawEnvironmentDecorations(bool bForeground);
     void UpdateSoldierRespawn(float fDeltaTimeSeconds);
     float GetHeartTargetFill(std::size_t unHeartIndex) const;
     void UpdateHealthHearts(float fDeltaTimeSeconds);

@@ -1,5 +1,7 @@
 #include "Enemy.h"
 
+#include "Parallax.h"
+
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -72,7 +74,7 @@ const std::string &Enemy::GetDisplayName() const
     return m_strDisplayName;
 }
 
-void Enemy::TakeDamage(int nDamage, bool bLaunchCorpse)
+void Enemy::TakeDamage(int nDamage, bool bLaunchCorpse, float fWorldOffsetX)
 {
     if (m_bDead || nDamage <= 0)
     {
@@ -86,7 +88,12 @@ void Enemy::TakeDamage(int nDamage, bool bLaunchCorpse)
         m_bDead = true;
         m_bAttackHitPending = false;
         m_fDeathTimer = 0.0f;
-        m_fCorpseWorldX = m_fFeetWorldX;
+        /*Anchor the corpse to the screen position where the living enemy fell.
+          It still scrolls at its ground depth afterwards, but does not jump
+          sideways when the parallax factor changes on death.*/
+        m_fCorpseWorldX =
+            m_fFeetWorldX +
+            fWorldOffsetX * (GetGroundParallaxFactor(m_fFeetY) - 1.0f);
         m_fCorpseFeetY = m_fFeetY;
         m_fCorpseJumpOffsetY = 0.0f;
         m_fCorpseJumpVelocityY =
@@ -556,7 +563,12 @@ void Enemy::Draw(float fWorldOffsetX)
     const float fEntityFeetY = m_bDead ? m_fCorpseFeetY : m_fFeetY;
     const float fDrawFeetY =
         m_bDead ? m_fCorpseFeetY + m_fCorpseJumpOffsetY : m_fFeetY;
-    const float fFeetScreenX = fEntityWorldX - fWorldOffsetX;
+    /*Dead bodies follow the ground depth they fell on*/
+    const float fScrollOffset =
+        m_bDead ?
+            fWorldOffsetX * GetGroundParallaxFactor(fEntityFeetY) :
+            fWorldOffsetX;
+    const float fFeetScreenX = fEntityWorldX - fScrollOffset;
     const float fFrameX = fFeetScreenX - fFrameWidth * 0.5f;
     const float fFrameY = fDrawFeetY - fFrameHeight;
     const float fScreenWidth = static_cast<float>(rend->SCREEN_WIDTH);

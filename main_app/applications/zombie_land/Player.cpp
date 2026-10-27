@@ -708,6 +708,16 @@ bool Player::IsDead() const
     return m_bDead;
 }
 
+bool Player::IsShooting() const
+{
+    return m_bShooting || m_bContinuousShooting;
+}
+
+void Player::FaceTowardsWorldX(float fWorldX)
+{
+    m_bFacingRight = fWorldX >= m_fFeetWorldX;
+}
+
 float Player::GetHealth() const
 {
     return m_fHealth;

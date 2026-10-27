@@ -1,5 +1,7 @@
 #include "MainGame.h"
 
+#include "Parallax.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -34,6 +36,9 @@ constexpr std::size_t g_unBackgroundParallaxFactorsCount =
 /*Draw the characters behind the foreground cactus layer*/
 constexpr std::size_t g_unCharacterBackgroundLayerIndex = 4;
 
+/*Ground decorations repeat across this world span so the desert never runs out*/
+constexpr float g_fEnvironmentRepeatWidth = 6000.0f;
+
 /*Each wave gets a random number of active enemies within this range*/
 constexpr std::size_t g_unMinActiveEnemies = 3;
 constexpr std::size_t g_unMaxActiveEnemies = 10;
@@ -44,7 +49,6 @@ constexpr int g_nGrenadeDamage = 999;
 /*Each zombie attack removes one quarter of a heart*/
 constexpr float g_fZombieAttackDamage = 0.25f;
 constexpr float g_fShotRange = 1500.0f;
-constexpr float g_fShotVerticalTolerance = 100.0f;
 constexpr float g_fGrenadeDamageRadiusX = 260.0f;
 constexpr float g_fGrenadeDamageRadiusY = 150.0f;
 constexpr float g_fZombieAttackHitRangeX = 150.0f;
@@ -126,6 +130,44 @@ bool ZombieLand::Init()
         return false;
     }
 
+    auto loadEnvironmentTexture = [this](EEnvironmentAsset eAsset,
+                                         const std::string &strPath) -> bool
+    {
+        std::shared_ptr<Texture> &texture =
+            m_arrEnvironmentTextures[static_cast<std::size_t>(eAsset)];
+        texture = Texture::CreateTexture(strPath);
+        return texture && texture->Load();
+    };
+
+    if (!loadEnvironmentTexture(EEnvironmentAsset::eDeadTree1,
+                                "../src/resources/zombie_land/environment/dead_tree_1.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eDeadTree2,
+                                "../src/resources/zombie_land/environment/dead_tree_2.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eBush1,
+                                "../src/resources/zombie_land/environment/bush_1.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eBush2,
+                                "../src/resources/zombie_land/environment/bush_2.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eGrass1,
+                                "../src/resources/zombie_land/environment/grass_1.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eGrass2,
+                                "../src/resources/zombie_land/environment/grass_2.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eGrass3,
+                                "../src/resources/zombie_land/environment/grass_3.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eSkeletonRibcage,
+                                "../src/resources/zombie_land/environment/skeleton_ribcage.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eSkeletonSkull,
+                                "../src/resources/zombie_land/environment/skeleton_skull.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eSkeletonSpine,
+                                "../src/resources/zombie_land/environment/skeleton_spine.png") ||
+        !loadEnvironmentTexture(EEnvironmentAsset::eSkeletonHand,
+                                "../src/resources/zombie_land/environment/skeleton_hand.png"))
+    {
+        LOG_ERROR("Zombie Land - Unable to load environment decoration textures !");
+        return false;
+    }
+
+    CreateEnvironmentDecorations();
+
     if (!m_soldier.Init())
     {
         LOG_ERROR("Zombie Land - Unable to initialize player !");
@@ -169,6 +211,18 @@ bool ZombieLand::Deinit()
         m_textureHeartEmpty.reset();
     }
 
+    for (std::shared_ptr<Texture> &texture : m_arrEnvironmentTextures)
+    {
+        if (texture)
+        {
+            texture->DeleteTexture();
+            texture.reset();
+        }
+    }
+
+    m_vecGroundDecorations.clear();
+    m_vecForegroundDecorations.clear();
+
     m_soldier.Deinit();
 
     for (Enemy *pEnemy : m_vecEnemies)
@@ -186,12 +240,24 @@ bool ZombieLand::HandleEvent()
 
     m_soldier.Update(fDeltaTimeSeconds);
 
-    /*Every queued shot hits the closest living enemy in the soldier's line of fire*/
+    /*Keep the soldier turned toward the closest target while firing, even when
+      it is behind him or at a different ground depth*/
+    if (m_soldier.IsShooting())
+    {
+        Enemy *pAimTarget = GetNearestShootableEnemy();
+
+        if (pAimTarget)
+        {
+            m_soldier.FaceTowardsWorldX(pAimTarget->GetFeetWorldX());
+        }
+    }
+
+    /*Every queued shot hits the nearest living enemy in range*/
     const unsigned int unShotHits = m_soldier.ConsumeShotHits();
 
     for (unsigned int i = 0; i < unShotHits; ++i)
     {
-        DamageEnemyInShotLine();
+        DamageNearestEnemy();
     }
 
     /*Keep the original camera rule: only adjust the view while walking left/right*/
@@ -345,6 +411,7 @@ void ZombieLand::OnDraw()
     {
         if (unLayerIndex == unCharacterLayerIndex)
         {
+            DrawEnvironmentDecorations(false);
             DrawGroundBlood();
 
             for (Enemy *pEnemy : m_vecActiveEnemies)
@@ -360,6 +427,7 @@ void ZombieLand::OnDraw()
 
     if (unCharacterLayerIndex >= m_vecTexturesBackground.size())
     {
+        DrawEnvironmentDecorations(false);
         DrawGroundBlood();
 
         for (Enemy *pEnemy : m_vecActiveEnemies)
@@ -369,6 +437,8 @@ void ZombieLand::OnDraw()
 
         m_soldier.Draw(m_fWorldOffsetX);
     }
+
+    DrawEnvironmentDecorations(true);
 
     /*Draw the grenade projectile and explosion above the foreground layers so
       the effect stays visible when the target stands behind a cactus*/
@@ -440,11 +510,11 @@ Enemy *ZombieLand::GetNearestEnemy() const
     return pNearestEnemy;
 }
 
-Enemy *ZombieLand::GetEnemyInShotLine() const
+Enemy *ZombieLand::GetNearestShootableEnemy() const
 {
     Enemy *pNearestEnemy = nullptr;
     float fNearestDistanceSq = std::numeric_limits<float>::max();
-    const bool bFacingRight = m_soldier.IsFacingRight();
+    const float fShotRangeSq = g_fShotRange * g_fShotRange;
 
     for (Enemy *pEnemy : m_vecActiveEnemies)
     {
@@ -455,22 +525,12 @@ Enemy *ZombieLand::GetEnemyInShotLine() const
 
         const float fDeltaX = pEnemy->GetFeetWorldX() - m_soldier.GetFeetWorldX();
         const float fDeltaY = pEnemy->GetFeetY() - m_soldier.GetFeetY();
-        const float fHorizontalDistance = std::fabs(fDeltaX);
-        const float fVerticalDistance = std::fabs(fDeltaY);
-
-        if ((bFacingRight && fDeltaX < 0.0f) ||
-            (!bFacingRight && fDeltaX > 0.0f))
-        {
-            continue;
-        }
-
-        if (fHorizontalDistance > g_fShotRange ||
-            fVerticalDistance > g_fShotVerticalTolerance)
-        {
-            continue;
-        }
-
         const float fDistanceSq = fDeltaX * fDeltaX + fDeltaY * fDeltaY;
+
+        if (fDistanceSq > fShotRangeSq)
+        {
+            continue;
+        }
 
         if (fDistanceSq < fNearestDistanceSq)
         {
@@ -482,14 +542,16 @@ Enemy *ZombieLand::GetEnemyInShotLine() const
     return pNearestEnemy;
 }
 
-void ZombieLand::DamageEnemyInShotLine()
+void ZombieLand::DamageNearestEnemy()
 {
-    Enemy *pTarget = GetEnemyInShotLine();
+    Enemy *pTarget = GetNearestShootableEnemy();
 
     if (!pTarget)
     {
         return;
     }
+
+    m_soldier.FaceTowardsWorldX(pTarget->GetFeetWorldX());
 
     const float fHitWorldX = pTarget->GetFeetWorldX();
     const float fHeadWorldY = pTarget->GetHeadWorldY();
@@ -497,7 +559,7 @@ void ZombieLand::DamageEnemyInShotLine()
 
     LOG_INFO("Zombie Land - Shot hit \"{0}\" for {1} damage",
              pTarget->GetDisplayName(), g_nShotDamage);
-    pTarget->TakeDamage(g_nShotDamage);
+    pTarget->TakeDamage(g_nShotDamage, false, m_fWorldOffsetX);
 
     SpawnBloodAt(fHitWorldX, fHeadWorldY, fGroundY);
 }
@@ -524,7 +586,7 @@ void ZombieLand::DamageEnemiesInExplosion(float fWorldX, float fFeetY)
 
         LOG_INFO("Zombie Land - Grenade hit \"{0}\" for {1} damage",
                  pEnemy->GetDisplayName(), g_nGrenadeDamage);
-        pEnemy->TakeDamage(g_nGrenadeDamage, true);
+        pEnemy->TakeDamage(g_nGrenadeDamage, true, m_fWorldOffsetX);
         ++unHitCount;
     }
 
@@ -540,11 +602,17 @@ void ZombieLand::SpawnBloodAt(float fWorldX, float fHeadWorldY, float fGroundY)
     std::uniform_real_distribution<float> sizeDistribution(0.14f, 0.27f);
     std::uniform_real_distribution<float> lifeDistribution(0.34f, 0.62f);
 
+    /*Blood starts at the target's current screen position, then scrolls at the
+      ground depth of the hit once the camera moves*/
+    const float fAnchoredWorldX =
+        fWorldX +
+        m_fWorldOffsetX * (GetGroundParallaxFactor(fGroundY) - 1.0f);
+
     /*A short, dense impact splash keeps the hit readable on the head*/
     for (int i = 0; i < 2; ++i)
     {
         BloodParticle particle;
-        particle.fWorldX = fWorldX + jitter(rng) * 0.5f;
+        particle.fWorldX = fAnchoredWorldX + jitter(rng) * 0.5f;
         particle.fWorldY = fHeadWorldY + jitter(rng) * 0.5f;
         particle.fVelocityX = horizontalVelocity(rng) * 0.2f;
         particle.fVelocityY = upwardVelocity(rng) * 0.15f;
@@ -559,7 +627,7 @@ void ZombieLand::SpawnBloodAt(float fWorldX, float fHeadWorldY, float fGroundY)
     for (int i = 0; i < 13; ++i)
     {
         BloodParticle particle;
-        particle.fWorldX = fWorldX + jitter(rng);
+        particle.fWorldX = fAnchoredWorldX + jitter(rng);
         particle.fWorldY = fHeadWorldY + jitter(rng);
         particle.fVelocityX = horizontalVelocity(rng);
         particle.fVelocityY = upwardVelocity(rng);
@@ -578,7 +646,7 @@ void ZombieLand::SpawnBloodAt(float fWorldX, float fHeadWorldY, float fGroundY)
     for (int i = 0; i < 5; ++i)
     {
         BloodParticle particle;
-        particle.fWorldX = fWorldX + jitter(rng);
+        particle.fWorldX = fAnchoredWorldX + jitter(rng);
         particle.fWorldY = fHeadWorldY + jitter(rng) * 0.5f;
         particle.fVelocityX = dropHorizontalVelocity(rng);
         particle.fVelocityY = dropVerticalVelocity(rng);
@@ -652,7 +720,9 @@ void ZombieLand::DrawGroundBlood()
 
     for (const auto &splat : m_vecBloodSplats)
     {
-        const float fScreenX = splat.fWorldX - m_fWorldOffsetX;
+        const float fScreenX =
+            splat.fWorldX -
+            m_fWorldOffsetX * GetGroundParallaxFactor(splat.fGroundY);
         const float fScale = splat.fSize;
         const float fWidth = fTextureWidth * fScale;
         const float fHeight = fTextureHeight * fScale;
@@ -709,7 +779,9 @@ void ZombieLand::DrawAirborneBlood()
 
     for (const auto &particle : m_vecBloodParticles)
     {
-        const float fScreenX = particle.fWorldX - m_fWorldOffsetX;
+        const float fScreenX =
+            particle.fWorldX -
+            m_fWorldOffsetX * GetGroundParallaxFactor(particle.fGroundY);
         const float fScale = particle.fSize;
         const float fWidth = fTextureWidth * fScale;
         const float fHeight = fTextureHeight * fScale;
@@ -737,6 +809,175 @@ void ZombieLand::ClearBloodEffects()
 {
     m_vecBloodParticles.clear();
     m_vecBloodSplats.clear();
+}
+
+void ZombieLand::CreateEnvironmentDecorations()
+{
+    m_vecGroundDecorations.clear();
+    m_vecForegroundDecorations.clear();
+
+    /*A fixed seed keeps the desert set dressing stable between runs*/
+    std::mt19937 rng(0x5A17C0DEu);
+    auto randomBetween = [&rng](float fMin, float fMax)
+    {
+        return std::uniform_real_distribution<float>(fMin, fMax)(rng);
+    };
+    auto wrapWorldX = [](float fWorldX)
+    {
+        fWorldX = std::fmod(fWorldX, g_fEnvironmentRepeatWidth);
+        return fWorldX < 0.0f ? fWorldX + g_fEnvironmentRepeatWidth : fWorldX;
+    };
+    auto addDecoration = [this](std::vector<EnvironmentDecoration> &vecDecorations,
+                                EEnvironmentAsset eAsset,
+                                float fWorldX, float fGroundY, float fScale)
+    {
+        vecDecorations.push_back(
+            {m_arrEnvironmentTextures[static_cast<std::size_t>(eAsset)],
+             fWorldX, fGroundY, fScale});
+    };
+
+    /*A few twisted trees frame the route*/
+    const std::array<float, 6> arrTreeXs =
+    {
+        300.0f, 1390.0f, 2530.0f, 3710.0f, 4790.0f, 5660.0f
+    };
+    for (std::size_t i = 0; i < arrTreeXs.size(); ++i)
+    {
+        addDecoration(m_vecGroundDecorations,
+                      (i % 2 == 0) ?
+                          EEnvironmentAsset::eDeadTree1 :
+                          EEnvironmentAsset::eDeadTree2,
+                      wrapWorldX(arrTreeXs[i] + randomBetween(-80.0f, 80.0f)),
+                      randomBetween(905.0f, 985.0f),
+                      randomBetween(2.9f, 3.35f));
+    }
+
+    /*Bones are rarer landmarks, with the hand clawing out of the dirt*/
+    const std::array<float, 7> arrSkeletonXs =
+    {
+        710.0f, 1180.0f, 2010.0f, 3040.0f, 3980.0f, 4860.0f, 5620.0f
+    };
+    const std::array<EEnvironmentAsset, 4> arrSkeletonAssets =
+    {
+        EEnvironmentAsset::eSkeletonRibcage,
+        EEnvironmentAsset::eSkeletonSkull,
+        EEnvironmentAsset::eSkeletonSpine,
+        EEnvironmentAsset::eSkeletonHand
+    };
+    for (std::size_t i = 0; i < arrSkeletonXs.size(); ++i)
+    {
+        addDecoration(m_vecGroundDecorations,
+                      arrSkeletonAssets[i % arrSkeletonAssets.size()],
+                      wrapWorldX(arrSkeletonXs[i] + randomBetween(-90.0f, 90.0f)),
+                      randomBetween(970.0f, 1035.0f),
+                      randomBetween(2.7f, 3.3f));
+    }
+
+    /*Scrub bushes break up the empty ground*/
+    for (int i = 0; i < 14; ++i)
+    {
+        addDecoration(m_vecGroundDecorations,
+                      (i % 2 == 0) ?
+                          EEnvironmentAsset::eBush1 :
+                          EEnvironmentAsset::eBush2,
+                      randomBetween(0.0f, g_fEnvironmentRepeatWidth),
+                      randomBetween(940.0f, 1025.0f),
+                      randomBetween(2.8f, 3.5f));
+    }
+
+    /*Small tufts fill in the open sand*/
+    const std::array<EEnvironmentAsset, 3> arrGrassAssets =
+    {
+        EEnvironmentAsset::eGrass1,
+        EEnvironmentAsset::eGrass2,
+        EEnvironmentAsset::eGrass3
+    };
+    for (int i = 0; i < 34; ++i)
+    {
+        addDecoration(m_vecGroundDecorations,
+                      arrGrassAssets[i % arrGrassAssets.size()],
+                      randomBetween(0.0f, g_fEnvironmentRepeatWidth),
+                      randomBetween(950.0f, 1055.0f),
+                      randomBetween(2.5f, 3.6f));
+    }
+
+    /*Taller foreground grass crosses in front of the soldier's feet*/
+    for (int i = 0; i < 12; ++i)
+    {
+        addDecoration(m_vecForegroundDecorations,
+                      arrGrassAssets[(i + 1) % arrGrassAssets.size()],
+                      randomBetween(0.0f, g_fEnvironmentRepeatWidth),
+                      randomBetween(1035.0f, 1072.0f),
+                      randomBetween(3.0f, 4.0f));
+    }
+
+    const auto sortByDepth = [](const EnvironmentDecoration &left,
+                                const EnvironmentDecoration &right)
+    {
+        return left.fGroundY < right.fGroundY;
+    };
+    std::sort(m_vecGroundDecorations.begin(), m_vecGroundDecorations.end(),
+              sortByDepth);
+    std::sort(m_vecForegroundDecorations.begin(),
+              m_vecForegroundDecorations.end(), sortByDepth);
+}
+
+void ZombieLand::DrawEnvironmentDecorations(bool bForeground)
+{
+    const std::vector<EnvironmentDecoration> &vecDecorations =
+        bForeground ? m_vecForegroundDecorations : m_vecGroundDecorations;
+
+    if (vecDecorations.empty())
+    {
+        return;
+    }
+
+    const auto &rend = MainApp::GetInstance().ptrRend;
+    const float fScreenWidth = static_cast<float>(rend->SCREEN_WIDTH);
+
+    for (const EnvironmentDecoration &decoration : vecDecorations)
+    {
+        if (!decoration.texture)
+        {
+            continue;
+        }
+
+        const float fWidth =
+            static_cast<float>(decoration.texture->GetWidth()) * decoration.fScale;
+        const float fHeight =
+            static_cast<float>(decoration.texture->GetHeight()) * decoration.fScale;
+        const float fScrollFactor =
+            GetGroundParallaxFactor(decoration.fGroundY);
+        float fScroll = std::fmod(
+            m_fWorldOffsetX * fScrollFactor, g_fEnvironmentRepeatWidth);
+
+        if (fScroll < 0.0f)
+        {
+            fScroll += g_fEnvironmentRepeatWidth;
+        }
+
+        float fScreenX = decoration.fWorldX - fScroll;
+
+        /*Wrap decorations from the end of the pattern around to the other side*/
+        if (fScreenX <= -fWidth)
+        {
+            fScreenX += g_fEnvironmentRepeatWidth;
+        }
+        else if (fScreenX >= fScreenWidth)
+        {
+            fScreenX -= g_fEnvironmentRepeatWidth;
+        }
+
+        if (fScreenX + fWidth < 0.0f || fScreenX > fScreenWidth)
+        {
+            continue;
+        }
+
+        rend->DrawPictureScaled(decoration.texture,
+                                fScreenX,
+                                decoration.fGroundY - fHeight,
+                                decoration.fScale);
+    }
 }
 
 void ZombieLand::UpdateSoldierRespawn(float fDeltaTimeSeconds)
@@ -943,7 +1184,7 @@ void ZombieLand::RandomizeEnemies(bool bSpawnAheadOfPlayer)
     const float fMinSpawnDelay = bSpawnAheadOfPlayer ? 0.75f : 1.5f;
     const float fMaxSpawnDelay = bSpawnAheadOfPlayer ? 2.0f : 3.5f;
     std::uniform_real_distribution<float> delayDistribution(fMinSpawnDelay, fMaxSpawnDelay);
-    std::uniform_real_distribution<float> speedDistribution(350.0f, 650.0f);
+    std::uniform_real_distribution<float> speedDistribution(50.0f, 450.0f);
 
     for (std::size_t i = 0; i < unActiveEnemyCount; ++i)
     {
